@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -31,3 +31,14 @@ jobs:
           ./build/linux-amd64/adgh-cf --version
           ./build/linux-amd64/adgh-cf --help
           grep -F "$(cat VERSION)" <(./build/linux-amd64/adgh-cf --version)
+      - name: Upload main branch Linux packages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: adgh-cf-linux-${{ github.sha }}
+          path: |
+            build/release/adgh-cf-v*-linux-amd64.tar.gz
+            build/release/adgh-cf-v*-linux-arm64.tar.gz
+            build/release/adgh-cf-v*-SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14

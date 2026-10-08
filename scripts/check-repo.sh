@@ -7,7 +7,7 @@ personal_path_prefix='/Users'
 secret_pattern="BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|AKIA[A-Z0-9]{16}|$personal_path_prefix/[^/[:space:]]+/"
 while IFS= read -r -d '' path; do
   case "$path" in
-    .env.example|config*.example.json|*/config*.example.json) ;;
+    .env.example|examples/.env.example|config*.example.json|*/config*.example.json) ;;
     .env|.env.*|*/.env|*/.env.*|config*.json|*/config*.json|*.key|*.pem|*.p12|*.pfx|*.log|password|password.txt|.DS_Store|*/.DS_Store|build/*|.cache/*|state/*|reports/*|local-notes/*|secrets/*|credentials/*|node_modules/*|dist/*)
       echo "Publication boundary violation: $path" >&2
       failed=1
@@ -28,8 +28,8 @@ while IFS= read -r -d '' path; do
   fi
 done < <(git ls-files --cached --others --exclude-standard -z)
 
-if [[ -f .env.example ]] && grep -Eq '^[A-Z_]+=[[:space:]]*[^[:space:]]' .env.example; then
-  echo ".env.example must contain empty credential/proxy values" >&2
+if [[ -f examples/.env.example ]] && grep -Eq '^[A-Z_]+=[[:space:]]*[^[:space:]]' examples/.env.example; then
+  echo "examples/.env.example must contain empty credential/proxy values" >&2
   failed=1
 fi
 if [[ "$failed" != 0 ]]; then exit 1; fi

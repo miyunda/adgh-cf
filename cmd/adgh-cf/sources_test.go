@@ -220,7 +220,12 @@ func TestOfflineSnapshotAndExport(t *testing.T) {
 }
 
 func TestBundledPTProfile(t *testing.T) {
-	c, err := loadConfig("config.pt.example.json")
+	// Templates are copied beside candidates/ when installed or packaged.
+	data, err := os.ReadFile("../../examples/config.pt.example.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c, err := parseConfig(data, "../..")
 	if err != nil {
 		t.Fatal(err)
 	}
