@@ -11,7 +11,7 @@ import (
 )
 
 func TestPublicExampleConfigurations(t *testing.T) {
-	files, err := filepath.Glob("config*.example.json")
+	files, err := filepath.Glob("../../examples/config*.example.json")
 	if err != nil || len(files) == 0 {
 		t.Fatal("missing configuration templates")
 	}
