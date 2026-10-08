@@ -82,6 +82,15 @@ systemctl list-timers adgh-cf.timer
 
 `/var/lib/adgh-cf/last-run.json` 为最近一次成功产出的完整报告，`optimizer.json` 保存最近 48 轮摘要（保留次数和中位数，不重复保存原始样本）、确认进度、切换时间和 pending。错误日志以 journald 为准：一次失败不会把旧完整报告自动改成最新报告。退出码 `0` 表示正常完成（包括保留现有地址），`1` 表示配置/API/DNS/写入验证等执行故障；`probe` 的无合格候选仍为 `2`。先不要放宽成功率门槛来掩盖家庭网络故障。
 
+日志精简改动后的二进制使用现有 service 即可：`run --output` 不再将完整 JSON 重复写入 journal，默认保留候选源状态、TCP 阶段、测速汇总、优化决定及错误。优化摘要包含当前地址、建议地址、拟切换地址、确认次数、原因和实际动作；`next` 是拟切换地址，是否实际切换应看 `action`。无合格地址、等待确认或冷却时 `action` 为空；dry-run 不写 DNS。详细样本与淘汰原因查看报告：
+
+```sh
+sudo less /var/lib/adgh-cf/last-run.json
+sudo journalctl -u adgh-cf.service --since "30 minutes ago" --no-pager
+```
+
+需要临时查看每个样本的进度时，在手动 `probe` 或 `run --dry-run` 命令中添加 `--verbose`。此选项不会把文件中的 JSON 重新输出到 journal。未指定 `--output` 的手动命令仍向 stdout 输出 JSON。升级不会删除旧 journal 历史，也不会改变主机全局日志轮转；已发布的 0.1.0 仍使用原来的详细日志行为。
+
 暂停自动运行：
 
 ```sh

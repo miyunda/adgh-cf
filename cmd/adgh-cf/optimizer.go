@@ -190,13 +190,15 @@ type optimizerDependencies struct {
 	healthy func(context.Context, string) bool
 }
 
-func runOptimizer(ctx context.Context, c Config, dryRun bool, outputPath string, out, log io.Writer) (int, error) {
+func runOptimizer(ctx context.Context, c Config, dryRun bool, outputPath string, out, log io.Writer, verbose bool) (int, error) {
 	api, err := newAdGuardClient(c)
 	if err != nil {
 		return 1, err
 	}
 	defer api.client.CloseIdleConnections()
-	d := optimizerDependencies{api: api, resolve: func(ctx context.Context) ([]string, error) { return resolveAdGuard(ctx, c) }, measure: runProbe, verify: func(ctx context.Context, ip string) error { return verifyTarget(ctx, c, ip) }, healthy: func(ctx context.Context, ip string) bool { return probeHTTPS(ctx, ip, c, nil).Usable }}
+	d := optimizerDependencies{api: api, resolve: func(ctx context.Context) ([]string, error) { return resolveAdGuard(ctx, c) }, measure: func(ctx context.Context, measured Config, path string, out, log io.Writer) (int, error) {
+		return runProbe(ctx, measured, path, out, log, verbose)
+	}, verify: func(ctx context.Context, ip string) error { return verifyTarget(ctx, c, ip) }, healthy: func(ctx context.Context, ip string) bool { return probeHTTPS(ctx, ip, c, nil).Usable }}
 	return executeOptimizer(ctx, c, dryRun, outputPath, out, log, d)
 }
 
@@ -364,6 +366,31 @@ func emitOptimizer(path string, out io.Writer, report any) (int, error) {
 		if err := writeReport(path, data); err != nil {
 			return 1, err
 		}
+		// Keep the detailed report in the file; stdout is collected by systemd.
+		var summary struct {
+			Mode      string `json:"mode"`
+			Decision  string `json:"decision"`
+			Optimizer *struct {
+				CurrentIP     string `json:"currentIp"`
+				SuggestedIP   string `json:"suggestedIp"`
+				NextIP        string `json:"nextIp"`
+				Reason        string `json:"reason"`
+				Action        string `json:"action"`
+				Confirmations int    `json:"confirmations"`
+			} `json:"optimizer"`
+		}
+		if err := json.Unmarshal(data, &summary); err != nil {
+			return 1, err
+		}
+		if d := summary.Optimizer; d != nil {
+			_, err = fmt.Fprintf(out, "Optimizer %s: current=%s suggested=%s next=%s confirmations=%d reason=%q action=%q; report=%q\n", summary.Mode, d.CurrentIP, d.SuggestedIP, d.NextIP, d.Confirmations, d.Reason, d.Action, path)
+		} else {
+			_, err = fmt.Fprintf(out, "Optimizer %s: decision=%q; report=%q\n", summary.Mode, summary.Decision, path)
+		}
+		if err != nil {
+			return 1, err
+		}
+		return 0, nil
 	}
 	_, err = out.Write(data)
 	if err != nil {

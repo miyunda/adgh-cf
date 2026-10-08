@@ -39,8 +39,13 @@ func TestOptimizerDryRunThenConfirmedUpdateAndRecovery(t *testing.T) {
 		t.Fatal("dry-run advanced state")
 	}
 	out.Reset()
-	if _, err := executeOptimizer(context.Background(), c, false, "", &out, &log, d); err != nil || api.writes != 0 {
+	reportPath := filepath.Join(filepath.Dir(c.StateFile), "last-run.json")
+	if _, err := executeOptimizer(context.Background(), c, false, reportPath, &out, &log, d); err != nil || api.writes != 0 {
 		t.Fatal("first confirmation wrote", err)
+	}
+	data, err := os.ReadFile(reportPath)
+	if err != nil || !json.Valid(data) || !bytes.Contains(data, []byte(`"results"`)) || !strings.Contains(out.String(), "confirmations=1") || strings.Count(out.String(), "\n") != 1 {
+		t.Fatal("confirmation summary or full file report missing", err, out.String())
 	}
 	s, err := loadOptimizerState(c)
 	if err != nil || s.Streak != 1 {
@@ -49,8 +54,11 @@ func TestOptimizerDryRunThenConfirmedUpdateAndRecovery(t *testing.T) {
 	s.LastRun = time.Now().Add(-time.Hour)
 	saveOptimizerState(c, s)
 	out.Reset()
-	if _, err := executeOptimizer(context.Background(), c, false, "", &out, &log, d); err != nil || api.writes != 1 || api.rule.Answer != "104.17.128.164" {
+	if _, err := executeOptimizer(context.Background(), c, false, reportPath, &out, &log, d); err != nil || api.writes != 1 || api.rule.Answer != "104.17.128.164" {
 		t.Fatal("confirmed switch failed", err)
+	}
+	if !strings.Contains(out.String(), `action="switched"`) || strings.Count(out.String(), "\n") != 1 {
+		t.Fatal("actual switch missing from summary", out.String())
 	}
 	s, err = loadOptimizerState(c)
 	if err != nil || s.Pending != nil || s.LastSwitch.IsZero() {
@@ -60,8 +68,12 @@ func TestOptimizerDryRunThenConfirmedUpdateAndRecovery(t *testing.T) {
 	s.Pending = &pendingChange{Old: Rewrite{Domain: c.Domain, Answer: "103.31.4.18"}, Next: api.rule, StartedAt: time.Now()}
 	saveOptimizerState(c, s)
 	before := measures
-	if _, err := executeOptimizer(context.Background(), c, false, "", &out, &log, d); err != nil || api.writes != 1 || measures != before {
+	out.Reset()
+	if _, err := executeOptimizer(context.Background(), c, false, reportPath, &out, &log, d); err != nil || api.writes != 1 || measures != before {
 		t.Fatal("recovery repeated measurement/write", err)
+	}
+	if !strings.Contains(out.String(), "reconciled pending change: switched") || strings.Count(out.String(), "\n") != 1 {
+		t.Fatal("recovery missing from summary", out.String())
 	}
 	s, _ = loadOptimizerState(c)
 	if s.Pending != nil {

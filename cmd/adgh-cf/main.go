@@ -31,7 +31,7 @@ func runCLI(ctx context.Context, args []string, out, log io.Writer) (int, error)
 		_, err := fmt.Fprintf(out, "adgh-cf %s (commit %s)\n", version, commit)
 		return 0, err
 	}
-	usage := "Usage: adgh-cf <probe|refresh|export|run> --config <file> [--output <file>] [--dry-run]"
+	usage := "Usage: adgh-cf <probe|refresh|export|run> --config <file> [--output <file>] [--dry-run] [--verbose]"
 	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
 		fmt.Fprintln(out, usage)
 		return 0, nil
@@ -44,6 +44,7 @@ func runCLI(ctx context.Context, args []string, out, log io.Writer) (int, error)
 	configPath := flags.String("config", "", "JSON configuration file")
 	outputPath := flags.String("output", "", "write report atomically")
 	dryRun := flags.Bool("dry-run", false, "read and measure without changing DNS or optimizer state")
+	verbose := flags.Bool("verbose", false, "log individual samples and eliminations (probe/run only)")
 	if err := flags.Parse(args[1:]); err != nil {
 		if err == flag.ErrHelp {
 			return 0, nil
@@ -60,8 +61,11 @@ func runCLI(ctx context.Context, args []string, out, log io.Writer) (int, error)
 	if *dryRun && args[0] != "run" {
 		return 1, fmt.Errorf("--dry-run is only valid with run")
 	}
+	if *verbose && args[0] != "run" && args[0] != "probe" {
+		return 1, fmt.Errorf("--verbose is only valid with probe or run")
+	}
 	if args[0] == "run" {
-		return runOptimizer(ctx, c, *dryRun, *outputPath, out, log)
+		return runOptimizer(ctx, c, *dryRun, *outputPath, out, log, *verbose)
 	}
 	if args[0] == "refresh" || args[0] == "export" {
 		if len(c.CandidateSources) == 0 {
@@ -109,10 +113,10 @@ func runCLI(ctx context.Context, args []string, out, log io.Writer) (int, error)
 		}
 		return 2, nil
 	}
-	return runProbe(ctx, c, *outputPath, out, log)
+	return runProbe(ctx, c, *outputPath, out, log, *verbose)
 }
 
-func runProbe(ctx context.Context, c Config, outputPath string, out, log io.Writer) (int, error) {
+func runProbe(ctx context.Context, c Config, outputPath string, out, log io.Writer, verbose bool) (int, error) {
 	data, err := os.ReadFile(c.CandidateFile)
 	if err != nil {
 		return 1, fmt.Errorf("read candidates: %w", err)
@@ -210,10 +214,14 @@ func runProbe(ctx context.Context, c Config, outputPath string, out, log io.Writ
 			}
 			s := probeHTTPS(ctx, ip, c, nil)
 			collected[ip] = append(collected[ip], s)
-			fmt.Fprintf(log, "Sample %d/%d: %s %s %.0fms\n", round+1, c.SamplesPerIP, ip, s.Classification, s.TotalMs)
+			if verbose {
+				fmt.Fprintf(log, "Sample %d/%d: %s %s %.0fms\n", round+1, c.SamplesPerIP, ip, s.Classification, s.TotalMs)
+			}
 			if reason := eliminationReason(collected[ip], c); reason != "" {
 				eliminated[ip] = reason
-				fmt.Fprintf(log, "Eliminated %s: %s\n", ip, reason)
+				if verbose {
+					fmt.Fprintf(log, "Eliminated %s: %s\n", ip, reason)
+				}
 			}
 			select {
 			case <-ctx.Done():
@@ -263,14 +271,28 @@ func runProbe(ctx context.Context, c Config, outputPath string, out, log io.Writ
 		return 1, err
 	}
 	encoded = append(encoded, '\n')
+	samples := 0
+	for _, result := range results {
+		samples += result.SampleCount
+	}
+	best := "none"
+	if suggested != nil {
+		best = *suggested
+	}
+	fmt.Fprintf(log, "Probe complete: tcp=%d/%d finalists=%d samples=%d eligible=%d suggested=%s\n", len(connected), len(tcp), len(results), samples, len(ranking), best)
+	if baselineErr != nil {
+		fmt.Fprintf(log, "Baseline DNS failed: %v\n", baselineErr)
+	}
 	if outputPath != "" {
 		if err := writeReport(outputPath, encoded); err != nil {
 			return 1, err
 		}
 		fmt.Fprintln(log, "Report saved:", outputPath)
 	}
-	if _, err := out.Write(encoded); err != nil {
-		return 1, err
+	if outputPath == "" {
+		if _, err := out.Write(encoded); err != nil {
+			return 1, err
+		}
 	}
 	if suggested == nil {
 		return 2, nil
