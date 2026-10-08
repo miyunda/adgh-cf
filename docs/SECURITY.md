@@ -6,7 +6,7 @@
 
 `.gitignore` 排除 .env、实际 config*.json（保留 *.example.json）、密钥、密码文件、日志、状态、报告、构建产物及 macOS 文件。忽略规则无法保护已经跟踪或使用 git add -f 强行加入的文件。自定义凭据文件统一放在 secrets/ 或仓库外；不要相信任意文件名都会自动被忽略。
 
-make check 中的 scripts/check-repo.sh 检查文件边界、空白 .env.example 和常见密钥/token/个人路径，同时检查 Git index 中的常见敏感标记。它是启发式检查，不识别所有密码或编码形式，不能保证“扫描通过即无秘密”。首次提交、每次发布都需查看 `git diff --cached` 和完整文件清单；配置示例只能写占位内容。GitHub Secret scanning/Push protection 可作为额外保护，不能替代本地审查。
+make check 中的 scripts/check-repo.sh 检查文件边界、空白 examples/.env.example 和常见密钥/token/个人路径，同时检查 Git index 中的常见敏感标记。它是启发式检查，不识别所有密码或编码形式，不能保证“扫描通过即无秘密”。首次提交、每次发布都需查看 `git diff --cached` 和完整文件清单；配置示例只能写占位内容。GitHub Secret scanning/Push protection 可作为额外保护，不能替代本地审查。
 
 目前工作流不需要配置任何家庭凭据，也不通过 CI 连接家庭网络。即使添加 GitHub Actions Secrets，也不能把真实密码写入 YAML、日志或制品。若秘密进入 Git 或 CI 日志，先撤销/轮换凭据，再处理日志或历史；仅删除当前文件不会从历史移除秘密。
 
