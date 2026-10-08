@@ -16,7 +16,7 @@ build_flags="-s -w -X main.version=$build_version -X main.commit=$build_commit"
 mkdir -p build
 case "${1:-}" in
   local)
-    CGO_ENABLED=0 go build -trimpath -ldflags="$build_flags" -o build/adgh-cf .
+    CGO_ENABLED=0 go build -trimpath -ldflags="$build_flags" -o build/adgh-cf ./cmd/adgh-cf
     ;;
   linux)
     bash scripts/check-repo.sh
@@ -26,10 +26,11 @@ case "${1:-}" in
     for arch in amd64 arm64; do
       package_dir="$release_stage/linux-$arch"
       mkdir -p "$package_dir/candidates" "build/linux-$arch"
-      CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags="$build_flags" -o "$package_dir/adgh-cf" .
+      CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -trimpath -ldflags="$build_flags" -o "$package_dir/adgh-cf" ./cmd/adgh-cf
       cp "$package_dir/adgh-cf" "build/linux-$arch/adgh-cf"
       # Allowlist assets; never package a checkout, local config or state directory.
-      cp README.md VERSION CHANGELOG.md .env.example config*.example.json "$package_dir/"
+      cp README.md VERSION CHANGELOG.md "$package_dir/"
+      cp examples/.env.example examples/config*.example.json "$package_dir/"
       if [[ -f LICENSE ]]; then cp LICENSE "$package_dir/"; fi
       cp candidates/cloudflare-ipv4.txt candidates/community-ipv4.txt "$package_dir/candidates/"
       mkdir -p "$package_dir/docs/releases" "$package_dir/deploy/systemd"

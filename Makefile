@@ -8,7 +8,7 @@ test:
 
 check:
 	go vet ./...
-	test -z "$$(gofmt -l *.go)"
+	test -z "$$(gofmt -l cmd/adgh-cf/*.go)"
 	bash -n scripts/*.sh
 	bash scripts/check-repo.sh
 

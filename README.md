@@ -1,5 +1,11 @@
 # adgh-cf
 
+[![CI](https://github.com/miyunda/adgh-cf/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/miyunda/adgh-cf/actions/workflows/ci.yml?query=branch%3Amain)
+[![Go](https://img.shields.io/badge/Go-%3E%3D1.24-00ADD8?logo=go&logoColor=white)](go.mod)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+English readers, you don’t need this.
+
 在家庭网络测量 Cloudflare CDN IPv4 对目标 HTTPS 服务的访问表现。支持 OpenBao/Vault 健康判断或显式配置的通用 HTTP 检查、公共候选源、只读测速，以及通过 `run` 更新指定域名的一条现有 AdGuard Home IPv4 rewrite。`probe`、`refresh`、`export` 不改 DNS。测速只使用 IPv4；名单下载直连或连接 IPv4 代理，代理的远端连接由 OpenClash 决定。
 
 当前进度、家庭实测和人工试用记录见 [STATUS.md](docs/STATUS.md)；后续设计与验收见 [PLAN.md](docs/PLAN.md)。用户手动将 DNS rewrite 改为 `104.17.128.164` 试用。2026-10-08 已实现自动更新和 systemd 每小时调度模板，部署与首次 dry-run 见 [DEPLOY.md](docs/DEPLOY.md)；真实家庭写入与定时触发待验证。
@@ -69,7 +75,8 @@ PT 配置从 `candidateSnapshotFile` 读取公共候选，仍按官方 IPv4 网�
 在能访问 GitHub 的电脑上运行本机版本二进制（开发 Mac 可用 `make build` 生成），使用在线配置：
 
 ```sh
-./build/adgh-cf export --config config.example.json --output candidates/community-ipv4.next.txt
+test -f config.export.json || cp examples/config.example.json config.export.json
+./build/adgh-cf export --config config.export.json --output candidates/community-ipv4.next.txt
 ```
 
 `export` 强制刷新来源，导出去重的纯 IPv4 候选以及生成时间、来源和抓取时间；不测速，不改 DNS。下载失败但有已验证缓存时可以导出旧缓存，文件头会标注 `stale-cache`。没有有效地址则失败，不覆盖现有文件。
@@ -183,7 +190,29 @@ make linux
 
 `make build` 生成开发机可执行的 `build/adgh-cf`。`make linux` 关闭 CGO，交叉编译 amd64/arm64 静态二进制，在 `build/release/` 生成带版本号的包和 SHA256，并保留旧的本地包路径。构建注入 VERSION 和提交信息，运行 `--version` 查看。发布使用明确文件范围和新建暂存目录，不包含真实配置、缓存或报告。关闭 CGO 不会取消 TLS 校验，运行时仍使用系统 CA 根证书。
 
-源码保留简单的 Go 单包结构；工作流在 `.github/workflows/`，构建检查脚本在 `scripts/`，部署模板在 `deploy/systemd/`，文档在 `docs/`。配置模板仍放根目录，便于复制到使用位置；所有模板内相对路径按实际配置文件所在目录解释。
+源码保持 Go 单包结构，源码与测试集中在 `cmd/adgh-cf/`，可使用 `go run ./cmd/adgh-cf --help`。目录分工如下：
+
+| 目录 | 内容 |
+| --- | --- |
+| `cmd/adgh-cf/` | 命令入口、业务实现和 Go 测试 |
+| `examples/` | JSON 配置模板和空值 `.env.example` |
+| `candidates/` | 随包提供的候选快照和官方网段 |
+| `scripts/` | 构建和公开仓库边界检查 |
+| `deploy/systemd/` | service/timer 部署模板 |
+| `docs/` | 设计、部署、安全和发布文档 |
+| `.github/` | CI、Release 和 Dependabot 配置 |
+
+在源码目录运行时，先把模板复制到根目录或自己的部署目录，再填写环境信息。例如：
+
+```sh
+test -f config.pt.json || cp examples/config.pt.example.json config.pt.json
+test -f .env || cp examples/.env.example .env
+chmod 600 .env
+```
+
+所有模板内相对路径按实际配置文件所在目录解释，不直接使用 `--config examples/config.pt.example.json`。发布包仍将配置模板放在包根目录，已有 Linux 部署命令保持有效。真实配置、报告、状态和构建产物属于本地运行文件，由 Git 忽略。
+
+PR 执行检查、测试和构建验证；合并到 `main` 后再次验证，并将 Linux amd64/arm64 包及 SHA256 上传至对应 [CI 运行](https://github.com/miyunda/adgh-cf/actions/workflows/ci.yml) 的 Artifacts，保留 14 天。此处下载的是该提交的开发构建，正式版本通过 `v*` 标签创建草稿 Release。
 
 `make test` 使用 race detector，开发机需要支持 CGO 的 C 编译器。只有运行测试需要；普通编译和目标 Linux 二进制不依赖 CGO。也可先使用 `go test ./...`。
 
@@ -191,4 +220,4 @@ make linux
 
 自动更新的配置、`.env` 凭据和 systemd 安装步骤见 [DEPLOY.md](docs/DEPLOY.md)。后续设计与验收边界见 [PLAN.md](docs/PLAN.md)。
 
-许可证：[MIT](LICENSE)。构建状态徽章待仓库建立且真实 CI 运行后添加。
+许可证：[MIT](LICENSE)。

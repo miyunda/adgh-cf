@@ -10,7 +10,7 @@
 
 主机日志由 journald/rsyslog 管理，现有 syslog 每周轮转保留四份并压缩，当前没有容量压力。暂不改全局日志策略；完整 JSON 仍重复输出至 journal，拟后续优化摘要，本轮发布整理没有修改日志行为。
 
-建议首次版本 0.1.0，已加入 VERSION、--version、CHANGELOG、Linux Actions CI 和 tag 草稿 Release、SHA256、升级/安全文档。用户选择 MIT，LICENSE 已加入；徽章按用户要求推迟到仓库建立后。真实 GitHub Actions 尚未运行。文档迁移至 docs，公开示例统一使用通用域名和地址，旧个人记录保存在被忽略的 local-notes。旧 Node 依赖和编译目录已清理；没有提交、推送、创建远程仓库或发布 Release。后续先查看 RELEASING.md，再确认仓库及第一轮 CI。
+建议首次版本 0.1.0，已加入 VERSION、--version、CHANGELOG、Linux Actions CI 和 tag 草稿 Release、SHA256、升级/安全文档。用户选择 MIT，LICENSE 已加入；README 已添加 CI、Go 版本要求和 MIT 徽章。2026-10-08 初始分支及两个 Dependabot PR 的真实 Linux CI 已通过，tag Release 待首次验证。文档迁移至 docs，公开示例统一使用通用域名和地址，旧个人记录保存在被忽略的 local-notes。旧 Node 依赖和编译目录已清理；没有提交、推送、创建远程仓库或发布 Release。后续发布流程见 RELEASING.md。
 
 健康路径始终可配置，新版又增加 healthMode=http 和预期状态码/内容标记，适用于非 OpenBao 服务。旧配置默认 openbao，原来的判断不变；改变规则或关键门槛会重置连续确认。通用模式仍检查证书、响应上限和重定向，不接受任意 200 页面。
 
