@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - run: make check test build linux
+      - name: Check version and native Linux executable
+        run: |
+          ./build/linux-amd64/adgh-cf --version
+          ./build/linux-amd64/adgh-cf --help
+          grep -F "$(cat VERSION)" <(./build/linux-amd64/adgh-cf --version)

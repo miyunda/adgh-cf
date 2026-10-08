@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Cloudflare IPv4 selection hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=2min
+Unit=adgh-cf.service
+
+[Install]
+WantedBy=timers.target

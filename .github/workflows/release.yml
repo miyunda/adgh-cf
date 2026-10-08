@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@9f698171ed81b15d1823a05fc7211befd50c8ae0 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: '1.27.1'
+          cache: false
+      - name: Validate tag and release notes
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          test "$RELEASE_TAG" = "v$(cat VERSION)"
+          test -f "docs/releases/$RELEASE_TAG.md"
+      - run: make check test build linux
+      - name: Check native Linux executable
+        run: ./build/linux-amd64/adgh-cf --version
+      - name: Create draft release with packages and checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          # Explicit assets prevent stale packages from another version being uploaded.
+          gh release create "$RELEASE_TAG" \
+            "build/release/adgh-cf-$RELEASE_TAG-linux-amd64.tar.gz" \
+            "build/release/adgh-cf-$RELEASE_TAG-linux-arm64.tar.gz" \
+            "build/release/adgh-cf-$RELEASE_TAG-SHA256SUMS" \
+            --verify-tag --draft --title "$RELEASE_TAG" \
+            --notes-file "docs/releases/$RELEASE_TAG.md"

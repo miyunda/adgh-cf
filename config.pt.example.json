@@ -1,0 +1,23 @@
+{
+  "domain": "openbao.example.com",
+  "healthPath": "/v1/sys/health",
+  "port": 443,
+  "candidateFile": "candidates/cloudflare-ipv4.txt",
+  "maxCandidates": 128,
+  "sampleOffset": 0,
+  "tcpConcurrency": 4,
+  "tcpTimeoutMs": 3000,
+  "httpsTimeoutMs": 5000,
+  "finalists": 8,
+  "samplesPerIp": 5,
+  "requestIntervalMs": 300,
+  "maxResponseBytes": 16384,
+  "minSuccessRate": 1,
+  "baselineDnsServers": [],
+  "candidateSources": [],
+  "candidateSnapshotFile": "candidates/community-ipv4.txt",
+  "candidateCacheDir": "state/candidate-sources",
+  "sourceRefreshHours": 24,
+  "cloudflareRangesFile": "candidates/cloudflare-ipv4.txt",
+  "pinnedIps": ["103.31.4.18"]
+}
