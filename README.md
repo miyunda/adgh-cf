@@ -10,18 +10,18 @@ English readers, you don’t need this.
 
 当前进度、家庭实测和人工试用记录见 [STATUS.md](docs/STATUS.md)；后续设计与验收见 [PLAN.md](docs/PLAN.md)。用户手动将 DNS rewrite 改为 `104.17.128.164` 试用。2026-10-08 已实现自动更新和 systemd 每小时调度模板，部署与首次 dry-run 见 [DEPLOY.md](docs/DEPLOY.md)；真实家庭写入与定时触发待验证。
 
-首次版本拟为 **0.1.0**。用户已验证家庭 dry-run 正常、service 实际运行和 timer 启用；自动切换结果仍待确认。示例域名和管理地址为通用占位值，复制示例后必须填写自己的环境。版本发布与升级见 [RELEASING.md](docs/RELEASING.md)，凭据与公开仓库边界见 [SECURITY.md](docs/SECURITY.md)。
+当前待发布版本为 **0.1.1**，精简定时运行日志；升级变化见 [v0.1.1 更新说明](docs/releases/v0.1.1.md)。用户已验证家庭 dry-run 正常、service 实际运行和 timer 启用；自动切换结果仍待确认。示例域名和管理地址为通用占位值，复制示例后必须填写自己的环境。版本发布与升级见 [RELEASING.md](docs/RELEASING.md)，凭据与公开仓库边界见 [SECURITY.md](docs/SECURITY.md)。
 
 ## Linux 部署
 
 运行只需要对应架构的二进制、JSON 配置、候选列表，以及系统 CA 根证书。目标机器无需 Go、Node.js、Python 或 OpenSSL。编译与打包在开发电脑完成。
 
-先在 PT 主机运行 `uname -m`：`x86_64` 对应 amd64，`aarch64` 对应 arm64。将对应的发布包和 SHA256 文件传到 PT 主机。以 v0.1.0 amd64 为例，在普通用户可写目录执行：
+先在 PT 主机运行 `uname -m`：`x86_64` 对应 amd64，`aarch64` 对应 arm64。将对应的发布包和 SHA256 文件传到 PT 主机。以 v0.1.1 amd64 为例，在普通用户可写目录执行：
 
 ```sh
 mkdir -p adgh-cf
-sha256sum --ignore-missing --check adgh-cf-v0.1.0-SHA256SUMS
-tar -xzf adgh-cf-v0.1.0-linux-amd64.tar.gz -C adgh-cf
+sha256sum --ignore-missing --check adgh-cf-v0.1.1-SHA256SUMS
+tar -xzf adgh-cf-v0.1.1-linux-amd64.tar.gz -C adgh-cf
 cd adgh-cf
 ./adgh-cf --version
 test -f config.json || cp config.pt.example.json config.json
