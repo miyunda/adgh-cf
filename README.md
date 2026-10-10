@@ -4,13 +4,98 @@
 [![Go](https://img.shields.io/badge/Go-%3E%3D1.24-00ADD8?logo=go&logoColor=white)](go.mod)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-English readers, you don’t need this.
+## English readers, you don’t need this.
+
+## 概览
 
 在家庭网络测量 Cloudflare CDN IPv4 对目标 HTTPS 服务的访问表现。支持 OpenBao/Vault 健康判断或显式配置的通用 HTTP 检查、公共候选源、只读测速，以及通过 `run` 更新指定域名的一条现有 AdGuard Home IPv4 rewrite。`probe`、`refresh`、`export` 不改 DNS。测速只使用 IPv4；名单下载直连或连接 IPv4 代理，代理的远端连接由 OpenClash 决定。
 
 当前进度、家庭实测和人工试用记录见 [STATUS.md](docs/STATUS.md)；后续设计与验收见 [PLAN.md](docs/PLAN.md)。用户手动将 DNS rewrite 改为 `104.17.128.164` 试用。2026-10-08 已实现自动更新和 systemd 每小时调度模板，部署与首次 dry-run 见 [DEPLOY.md](docs/DEPLOY.md)；真实家庭写入与定时触发待验证。
 
 当前待发布版本为 **0.1.1**，精简定时运行日志；升级变化见 [v0.1.1 更新说明](docs/releases/v0.1.1.md)。用户已验证家庭 dry-run 正常、service 实际运行和 timer 启用；自动切换结果仍待确认。示例域名和管理地址为通用占位值，复制示例后必须填写自己的环境。版本发布与升级见 [RELEASING.md](docs/RELEASING.md)，凭据与公开仓库边界见 [SECURITY.md](docs/SECURITY.md)。
+
+## 我的DNS环境
+
+欲优化的域名已经设置为直连不走代理
+
+使用本App之前是这样的：
+
+```mermaid
+flowchart TD
+    A["DNS 客户端"]
+    B["AdGuard Home<br/>Port 53"]
+    C{"域名是否为 .lan？"}
+    D["Dnsmasq<br/>本地域名解析"]
+    E["OpenClash DNS<br/>Port 7874"]
+    F{"DNS 分流判断"}
+    G["ISP DNS<br/>境内解析"]
+    H["订阅代理出口<br/>境外解析"]
+
+    A --> B
+    B --> C
+    C -->|是| D
+    C -->|否| E
+    E --> F
+    F -->|境内域名| G
+    F -->|境外域名| H
+
+    style B fill:#f2e9e1,stroke:#907aa9,color:#575279
+    style E fill:#e0def4,stroke:#907aa9,color:#575279
+    style C fill:#faf4ed,stroke:#d7827e,color:#575279
+    style F fill:#faf4ed,stroke:#d7827e,color:#575279
+    style D fill:#dce5d6,stroke:#56949f,color:#575279
+    style G fill:#dce5d6,stroke:#56949f,color:#575279
+    style H fill:#f2e9e1,stroke:#ea9d34,color:#575279
+```
+使用之后得给OpenClash加上解析策略：
+
+```mermaid
+flowchart TD
+    A["DNS 客户端"]
+    B["AdGuard Home<br/>:53"]
+    R{"DNS Rewrite<br/>命中？"}
+    P["Cloudflare 优选 IP<br/>104.17.128.164"]
+    C{"域名为 .lan？"}
+    D["Dnsmasq<br/>:5553"]
+    E["OpenClash DNS<br/>:7874"]
+    F{"优选 / 境内 / 境外？"}
+    G["ISP DNS"]
+    H["订阅代理出口"]
+
+    A --> B --> R
+    R -->|是| P
+    R -->|否| C
+    C -->|是| D
+    C -->|否| E
+    E --> F
+    F -->|优选| B
+    F -->|境内| G
+    F -->|境外| H
+
+    classDef service fill:#f2e9e1,stroke:#907aa9,color:#575279
+    classDef decision fill:#faf4ed,stroke:#d7827e,color:#575279
+    classDef destination fill:#dce5d6,stroke:#56949f,color:#575279
+    classDef changed fill:#f6c177,stroke:#ea9d34,color:#575279,stroke-width:3px
+
+    class A,B,E service
+    class C decision
+    class D,G,H destination
+    class R,P,F changed
+
+    linkStyle 2,7 stroke:#ea9d34,stroke-width:3px
+```
+在优化后，除了在 AdGuard Home 中增加 DNS Rewrite 之外，还需要在 OpenClash DNS 一侧增加针对特殊域名的判断。
+
+否则，请求一旦直接进入 OpenClash 的 7874 端口，就可能绕过 AdGuard Home 的 Rewrite 逻辑，最终拿不到预期的优选 IP。
+
+因此，修正后的方案是在 OpenClash 命中特殊域名时，将解析请求重新交回 AdGuard Home 处理，确保 Rewrite 规则真正生效。
+
+在OpenClash中添加以下：
+
+- Nameserver-Policy：已启用。
+- 指定域名：欲优化域名的FQDN。
+- 指定 DNS：AdGuard Home 的IP地址（以及端口号，默认53）
+
 
 ## Linux 部署
 
