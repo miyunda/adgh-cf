@@ -2,16 +2,16 @@
 
 ## 版本规则
 
-首次版本建议为 **0.1.0**：项目已有完整可用功能，但自动切换、安装和升级仍需真实环境验证。`0.0.1` 更适合非常早期的原型；`1.0.0` 则意味着明确承诺稳定接口。遵循 [Semantic Versioning](https://semver.org/)，0.x 阶段修改配置或状态格式仍需在更新说明中明确提示。
+首次版本为 **0.1.0**：项目已有完整可用功能，但自动切换、安装和升级仍需真实环境验证。`0.0.1` 更适合非常早期的原型；`1.0.0` 则意味着明确承诺稳定接口。遵循 [Semantic Versioning](https://semver.org/)，0.x 阶段修改配置或状态格式仍需在更新说明中明确提示。
 
-版本唯一来源为根目录 `VERSION`，Git 标签为 `v0.1.0`。更新 VERSION、CHANGELOG.md 和 `docs/releases/v<版本>.md` 后发布；标签必须与 VERSION 一致，不能移动已经发布的标签。修复使用补丁版本，新增功能使用次版本；未来 1.0 再承诺兼容边界。`adgh-cf --version` 输出版本和提交，直接 `go run ./cmd/adgh-cf` 显示 dev，未提交的本地 Make 构建显示 commit unknown。
+版本唯一来源为根目录 `VERSION`，当前待发布版本为 **0.1.1**，对应 Git 标签为 `v0.1.1`。更新 VERSION、CHANGELOG.md 和 `docs/releases/v<版本>.md` 后发布；标签必须与 VERSION 一致，不能移动已经发布的标签。修复使用补丁版本，新增功能使用次版本；未来 1.0 再承诺兼容边界。`adgh-cf --version` 输出版本和提交，直接 `go run ./cmd/adgh-cf` 显示 dev，未提交的本地 Make 构建显示 commit unknown。
 
 ## GitHub Actions
 
 - CI 对 `main` 的 push、所有 PR 和手动触发运行；功能分支和 Dependabot 分支通过 PR 验证，避免同一更新重复触发 push 与 PR CI。`main` 的 push 在全部检查通过后上传 Linux amd64/arm64 包和 SHA256，制品名称包含完整提交 SHA，保留 14 天；PR 和手动运行只验证构建，不上传。
 - CI 使用 GitHub 托管 `ubuntu-24.04`，执行格式、vet、race 测试、发布边界检查和静态构建。amd64 可执行文件在 runner 上执行，arm64 为交叉编译产物，暂未进行原生 arm64 运行验证。
 - 推送 `v*` 标签触发 Release，重新执行全部检查；验证标签、VERSION 和版本更新说明，生成两个架构包与 SHA256 文件，用 gh 创建 **草稿 Release**。检查附件和说明后人工发布，不自动部署到家庭网络。
-- 包名为 `adgh-cf-v0.1.0-linux-amd64.tar.gz` / `arm64.tar.gz`，校验文件 `adgh-cf-v0.1.0-SHA256SUMS`。打包采用新建临时目录和明确文件范围，不把整个 checkout、旧构建目录或部署状态打包。
+- 包名为 `adgh-cf-v0.1.1-linux-amd64.tar.gz` / `arm64.tar.gz`，校验文件 `adgh-cf-v0.1.1-SHA256SUMS`。打包采用新建临时目录和明确文件范围，不把整个 checkout、旧构建目录或部署状态打包。
 - 官方 checkout/setup-go/upload-artifact 固定到完整提交 SHA，Dependabot 每月提出更新；默认 token 只读，只有 tag Release job 获取 contents:write。工作流不使用 pull_request_target，不需要家庭代理、AdGuard 或 OpenBao 凭据。
 - 构建 Go 固定为已验证的 1.27.1；最低源代码版本为 go.mod 中的 1.24。Go 和 Actions 的安全更新需持续检查，固定版本不代表可以永久不更新。当前不宣称 tar 包能逐字节复现；压缩包 SHA256 用于核对下载完整性，不替代可信发布来源或签名。
 
@@ -30,13 +30,13 @@
 
 升级保留 `/etc/adgh-cf/config.json`、`.env`、密码文件和 `/var/lib/adgh-cf` 的完整状态。不要用示例配置覆盖它们。先阅读对应版本说明，确认是否涉及 unit、配置或状态迁移；不承诺老二进制能读取所有未来新状态。
 
-以下以 v0.1.0 amd64 为例，在存有下载包和 SHA256 文件的临时目录操作：
+以下以 v0.1.1 amd64 为例，在存有下载包和 SHA256 文件的临时目录操作：
 
 ```sh
-sha256sum --ignore-missing --check adgh-cf-v0.1.0-SHA256SUMS
-mkdir -p release-v0.1.0
-tar -xzf adgh-cf-v0.1.0-linux-amd64.tar.gz -C release-v0.1.0
-./release-v0.1.0/adgh-cf --version
+sha256sum --ignore-missing --check adgh-cf-v0.1.1-SHA256SUMS
+mkdir -p release-v0.1.1
+tar -xzf adgh-cf-v0.1.1-linux-amd64.tar.gz -C release-v0.1.1
+./release-v0.1.1/adgh-cf --version
 
 sudo systemctl stop adgh-cf.timer
 systemctl is-active adgh-cf.service
@@ -46,9 +46,9 @@ systemctl is-active adgh-cf.service
 
 ```sh
 sudo install -d -m 700 /var/backups/adgh-cf
-sudo cp /opt/adgh-cf/adgh-cf /var/backups/adgh-cf/adgh-cf-before-v0.1.0
-sudo cp -a /var/lib/adgh-cf /var/backups/adgh-cf/state-before-v0.1.0
-sudo install -m 755 release-v0.1.0/adgh-cf /opt/adgh-cf/adgh-cf.next
+sudo cp /opt/adgh-cf/adgh-cf /var/backups/adgh-cf/adgh-cf-before-v0.1.1
+sudo cp -a /var/lib/adgh-cf /var/backups/adgh-cf/state-before-v0.1.1
+sudo install -m 755 release-v0.1.1/adgh-cf /opt/adgh-cf/adgh-cf.next
 sudo mv /opt/adgh-cf/adgh-cf.next /opt/adgh-cf/adgh-cf
 
 sudo -u adgh-cf /opt/adgh-cf/adgh-cf run --dry-run --config /etc/adgh-cf/config.json --output /var/lib/adgh-cf/dry-run.json

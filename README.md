@@ -10,18 +10,18 @@ English readers, you don’t need this.
 
 当前进度、家庭实测和人工试用记录见 [STATUS.md](docs/STATUS.md)；后续设计与验收见 [PLAN.md](docs/PLAN.md)。用户手动将 DNS rewrite 改为 `104.17.128.164` 试用。2026-10-08 已实现自动更新和 systemd 每小时调度模板，部署与首次 dry-run 见 [DEPLOY.md](docs/DEPLOY.md)；真实家庭写入与定时触发待验证。
 
-首次版本拟为 **0.1.0**。用户已验证家庭 dry-run 正常、service 实际运行和 timer 启用；自动切换结果仍待确认。示例域名和管理地址为通用占位值，复制示例后必须填写自己的环境。版本发布与升级见 [RELEASING.md](docs/RELEASING.md)，凭据与公开仓库边界见 [SECURITY.md](docs/SECURITY.md)。
+当前待发布版本为 **0.1.1**，精简定时运行日志；升级变化见 [v0.1.1 更新说明](docs/releases/v0.1.1.md)。用户已验证家庭 dry-run 正常、service 实际运行和 timer 启用；自动切换结果仍待确认。示例域名和管理地址为通用占位值，复制示例后必须填写自己的环境。版本发布与升级见 [RELEASING.md](docs/RELEASING.md)，凭据与公开仓库边界见 [SECURITY.md](docs/SECURITY.md)。
 
 ## Linux 部署
 
 运行只需要对应架构的二进制、JSON 配置、候选列表，以及系统 CA 根证书。目标机器无需 Go、Node.js、Python 或 OpenSSL。编译与打包在开发电脑完成。
 
-先在 PT 主机运行 `uname -m`：`x86_64` 对应 amd64，`aarch64` 对应 arm64。将对应的发布包和 SHA256 文件传到 PT 主机。以 v0.1.0 amd64 为例，在普通用户可写目录执行：
+先在 PT 主机运行 `uname -m`：`x86_64` 对应 amd64，`aarch64` 对应 arm64。将对应的发布包和 SHA256 文件传到 PT 主机。以 v0.1.1 amd64 为例，在普通用户可写目录执行：
 
 ```sh
 mkdir -p adgh-cf
-sha256sum --ignore-missing --check adgh-cf-v0.1.0-SHA256SUMS
-tar -xzf adgh-cf-v0.1.0-linux-amd64.tar.gz -C adgh-cf
+sha256sum --ignore-missing --check adgh-cf-v0.1.1-SHA256SUMS
+tar -xzf adgh-cf-v0.1.1-linux-amd64.tar.gz -C adgh-cf
 cd adgh-cf
 ./adgh-cf --version
 test -f config.json || cp config.pt.example.json config.json
@@ -102,6 +102,8 @@ PT 下载尤其是上传占满出口时，会增加排队延迟和超时。先�
 5. 按成功率门槛筛选，以延迟生成本轮建议地址。退出码：`0` 有合格地址；`2` 没有合格地址；`1` 配置、文件或执行错误。
 
 报告的 `suggestedIp` 只是本轮受测地址中表现最好的候选，不会触发任何写入。TCP 最快不保证 HTTPS 最好；本版本只验证有限入围样本，不声称找到了全网最优地址。
+
+`probe`、`run` 默认只记录候选源状态、测速汇总、DNS 对照错误及优化决定，不逐条打印样本。指定 `--output` 时完整 JSON 原子保存至文件：`probe` 在 stderr 提示报告位置，`run` 在 stdout 输出一行包含当前/建议/下一地址、确认次数、原因和实际动作的摘要；pending 恢复或 dry-run 阻止变更也会输出决定。未指定 `--output` 时 stdout 仍输出完整 JSON，便于管道处理。逐 IP 样本、健康分类和淘汰原因始终保留在完整报告；需要实时样本进度时，对 `probe` 或 `run` 添加 `--verbose`。`refresh`、`export` 的输出行为不变。
 
 默认每个 IP 最多五次样本，只展示中位数；至少二十个成功样本才报告本轮 P95。成功率已不可能达标时提前淘汰；可用 `maxTtfbMs` 设置延迟淘汰门槛，0 表示禁用。报告 `eliminatedReason` 和实际样本数，被淘汰地址不参与排名。`run` 已提供连续确认、冷却及条件回滚，保留最近 48 轮摘要；跨轮聚合成功率、连接复用指标尚未实现。当前健康探测不能保证认证操作可用；HTTP/2 或 HTTP/3 客户端的性能可能不同。
 

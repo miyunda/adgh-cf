@@ -8,7 +8,7 @@
 
 用户已报告家庭 `run --dry-run` 正常；systemd service 已实际运行，timer 已启用并显示下一次触发。尚未取得实际自动切换、写后验证或回滚结果，不能将“timer 安装成功”当作完整验收。校验输出中的 KillMode 警告来自系统 Plymouth，而不是本项目；未修改该系统服务。
 
-主机日志由 journald/rsyslog 管理，现有 syslog 每周轮转保留四份并压缩，当前没有容量压力。暂不改全局日志策略；完整 JSON 仍重复输出至 journal，拟后续优化摘要，本轮发布整理没有修改日志行为。
+主机日志由 journald/rsyslog 管理，现有 syslog 每周轮转保留四份并压缩，当前没有容量压力。不改全局日志策略。0.1.0 仍将完整 JSON 重复输出 journal；后续已实现日志精简：`run --output` 保存完整报告后仅输出优化摘要，`probe --output` 仅保存文件并提示路径；两者默认保留测速汇总，通过 `--verbose` 开启逐样本/淘汰进度。未指定输出文件仍输出完整 JSON。无需修改现有 service/timer 或配置与状态格式；目标主机升级后的实际 journal 行为待验证。
 
 建议首次版本 0.1.0，已加入 VERSION、--version、CHANGELOG、Linux Actions CI 和 tag 草稿 Release、SHA256、升级/安全文档。用户选择 MIT，LICENSE 已加入；README 已添加 CI、Go 版本要求和 MIT 徽章。2026-10-08 初始分支及两个 Dependabot PR 的真实 Linux CI 已通过，tag Release 待首次验证。文档迁移至 docs，公开示例统一使用通用域名和地址，旧个人记录保存在被忽略的 local-notes。旧 Node 依赖和编译目录已清理；没有提交、推送、创建远程仓库或发布 Release。后续发布流程见 RELEASING.md。
 

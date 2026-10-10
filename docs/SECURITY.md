@@ -24,4 +24,4 @@ make check 中的 scripts/check-repo.sh 检查文件边界、空白 examples/.en
 
 依赖主机 journald/rsyslog 的现有轮转，不另建无限追加的应用日志。报告同名替换，optimizer 状态最多 48 轮摘要，下载缓存按源替换。公开仓库不包含原始主机日志。
 
-用户目标机已报告 dry-run 正常、timer 启用；journal 约 440MB，根分区可用约 24GB，syslog 每周轮转保留四份并压缩。现阶段无需项目专属 logrotate；主机配置属于用户环境，未由程序修改。完整 JSON 目前仍同时输出 journal，后续拟改为简洁摘要；本次发布整理没有更改日志行为。
+用户目标机已报告 dry-run 正常、timer 启用；journal 约 440MB，根分区可用约 24GB，syslog 每周轮转保留四份并压缩。现阶段无需项目专属 logrotate；主机配置属于用户环境，未由程序修改。已发布的 0.1.0 仍将完整 JSON 同时输出 journal；后续日志精简改动使 `run --output` 只输出简洁摘要，完整报告保留在指定文件。`probe`、`run` 默认不逐条打印样本，`--verbose` 可临时开启样本进度；原始样本仍在报告中。未指定 `--output` 时 stdout 保持完整 JSON。

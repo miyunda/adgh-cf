@@ -1,6 +1,11 @@
 # 更新记录
 
-## 0.1.0 — 待首次发布
+## 0.1.1 — 待发布
+
+- `run --output` 仅输出优化摘要，完整 JSON 保留在文件，减少 systemd journal 重复日志；`probe --output` 同样不重复输出 JSON。不带 `--output` 时保留 stdout JSON。
+- `probe`、`run` 默认输出测速汇总；逐样本与淘汰进度改为显式 `--verbose`，完整报告仍保留所有细节。候选源状态、DNS 对照错误与执行错误仍可查看。
+
+## 0.1.0
 
 - IPv4 TCP/HTTPS 优选、OpenBao 健康检查和提前淘汰。
 - 公共候选源、专用下载代理、独立缓存和离线快照。
