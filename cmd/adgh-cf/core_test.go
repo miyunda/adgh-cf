@@ -24,8 +24,19 @@ func TestPublicExampleConfigurations(t *testing.T) {
 		if err != nil {
 			t.Fatalf("invalid template %s: %v", path, err)
 		}
-		if !strings.HasSuffix(c.Domain, ".example.com") {
-			t.Fatalf("template %s must use a public placeholder domain", path)
+		domains := []string{c.Domain}
+		if c.SchemaVersion == 2 {
+			domains = nil
+			for _, g := range c.Groups {
+				for _, m := range g.Members {
+					domains = append(domains, m.Domain)
+				}
+			}
+		}
+		for _, domain := range domains {
+			if !strings.HasSuffix(domain, ".example.com") {
+				t.Fatalf("template %s must use public placeholder domains", path)
+			}
 		}
 	}
 }

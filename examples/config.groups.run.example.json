@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 2,
+  "candidateFile": "/opt/adgh-cf/candidates/cloudflare-ipv4.txt",
+  "cloudflareRangesFile": "/opt/adgh-cf/candidates/cloudflare-ipv4.txt",
+  "candidateSources": [],
+  "stateFile": "/var/lib/adgh-cf/optimizer-v2.json",
+  "maxRequestsPerGroup": 160,
+  "maxRunSeconds": 1800,
+  "groups": [
+    {
+      "id": "personal-sites",
+      "primary": "www.example.com",
+      "members": [
+        {
+          "domain": "www.example.com",
+          "url": "https://www.example.com/"
+        },
+        {
+          "domain": "files.example.com",
+          "url": "https://files.example.com/ready",
+          "mode": "http",
+          "expectedStatusCodes": [
+            200
+          ],
+          "expectedBodyContains": "service-ready"
+        },
+        {
+          "domain": "bao.example.com",
+          "url": "https://bao.example.com/v1/sys/health",
+          "mode": "openbao"
+        }
+      ]
+    }
+  ],
+  "candidateCacheDir": "/var/lib/adgh-cf/candidate-sources",
+  "adguardHomeUrl": "http://192.168.1.1:3000",
+  "adguardHomeDns": "192.168.1.1:53"
+}

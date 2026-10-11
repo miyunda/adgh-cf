@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 2,
+  "candidateFile": "candidates/cloudflare-ipv4.txt",
+  "cloudflareRangesFile": "candidates/cloudflare-ipv4.txt",
+  "candidateSources": [],
+  "stateFile": "state/optimizer-v2.json",
+  "groups": [
+    {
+      "id": "website",
+      "primary": "www.example.com",
+      "members": [
+        {
+          "domain": "www.example.com",
+          "url": "https://www.example.com/"
+        }
+      ]
+    }
+  ]
+}

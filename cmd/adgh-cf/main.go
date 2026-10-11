@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/netip"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -31,7 +32,7 @@ func runCLI(ctx context.Context, args []string, out, log io.Writer) (int, error)
 		_, err := fmt.Fprintf(out, "adgh-cf %s (commit %s)\n", version, commit)
 		return 0, err
 	}
-	usage := "Usage: adgh-cf <probe|refresh|export|run> --config <file> [--output <file>] [--dry-run] [--verbose]"
+	usage := "Usage: adgh-cf <probe|refresh|export|run> --config <file> [--output <file>] [--dry-run] [--verbose] [--group <id>]"
 	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
 		fmt.Fprintln(out, usage)
 		return 0, nil
@@ -44,6 +45,7 @@ func runCLI(ctx context.Context, args []string, out, log io.Writer) (int, error)
 	configPath := flags.String("config", "", "JSON configuration file")
 	outputPath := flags.String("output", "", "write report atomically")
 	dryRun := flags.Bool("dry-run", false, "read and measure without changing DNS or optimizer state")
+	group := flags.String("group", "", "select a v2 group (probe/run only)")
 	verbose := flags.Bool("verbose", false, "log individual samples and eliminations (probe/run only)")
 	if err := flags.Parse(args[1:]); err != nil {
 		if err == flag.ErrHelp {
@@ -63,6 +65,12 @@ func runCLI(ctx context.Context, args []string, out, log io.Writer) (int, error)
 	}
 	if *verbose && args[0] != "run" && args[0] != "probe" {
 		return 1, fmt.Errorf("--verbose is only valid with probe or run")
+	}
+	if *group != "" && (c.SchemaVersion != 2 || (args[0] != "run" && args[0] != "probe")) {
+		return 1, fmt.Errorf("--group requires v2 probe or run")
+	}
+	if c.SchemaVersion == 2 && (args[0] == "run" || args[0] == "probe") {
+		return runGroups(ctx, c, args[0], *group, *dryRun, *outputPath, out, log, *verbose)
 	}
 	if args[0] == "run" {
 		return runOptimizer(ctx, c, *dryRun, *outputPath, out, log, *verbose)
@@ -117,48 +125,15 @@ func runCLI(ctx context.Context, args []string, out, log io.Writer) (int, error)
 }
 
 func runProbe(ctx context.Context, c Config, outputPath string, out, log io.Writer, verbose bool) (int, error) {
-	data, err := os.ReadFile(c.CandidateFile)
-	if err != nil {
-		return 1, fmt.Errorf("read candidates: %w", err)
-	}
-	candidates, err := sampleCandidates(string(data), c.MaxCandidates, c.SampleOffset)
-	if err != nil {
-		return 1, err
-	}
-	public, statuses, err := publicCandidates(ctx, c, false)
-	if err != nil {
-		return 1, err
-	}
-	snapshot, snapshotStatus, err := loadCandidateSnapshot(c)
-	if err != nil {
-		return 1, err
-	}
-	public = unique(append(public, snapshot...))
-	if snapshotStatus != nil {
-		fmt.Fprintf(log, "Local snapshot: accepted=%d rejected=%d\n", snapshotStatus.Accepted, snapshotStatus.Rejected)
-	}
-	for _, s := range statuses {
-		fmt.Fprintf(log, "Source %s: %s, accepted=%d rejected=%d %s\n", s.URL, s.Status, s.Accepted, s.Rejected, s.Error)
-	}
-	if len(c.CandidateSources) > 0 || c.CandidateSnapshotFile != "" {
-		ranges, err := loadCloudflareRanges(c.CloudflareRangesFile)
+	pool := c.prepared
+	if pool == nil {
+		var err error
+		pool, err = prepareCandidates(ctx, c, log)
 		if err != nil {
 			return 1, err
 		}
-		filtered := []string{}
-		for _, ip := range candidates {
-			if inCloudflare(ip, ranges) {
-				filtered = append(filtered, ip)
-			}
-		}
-		candidates = filtered
-		for _, ip := range c.PinnedIPs {
-			if !inCloudflare(ip, ranges) {
-				return 1, fmt.Errorf("pinned IP is outside Cloudflare ranges: %s", ip)
-			}
-		}
 	}
-	candidates = selectCandidates(candidates, public, c.PinnedIPs, c.MaxCandidates, c.SampleOffset)
+	candidates, statuses, snapshotStatus := pool.ips, pool.sources, pool.snapshot
 	started := time.Now().UTC()
 	baseline, baselineErr := resolveBaseline(ctx, c)
 	ips := unique(append(append([]string{}, baseline...), candidates...))
@@ -198,14 +173,27 @@ func runProbe(ctx context.Context, c Config, outputPath string, out, log io.Writ
 		finalists = append(finalists, r.IP)
 	}
 	finalists = unique(finalists)
+	if c.budget != nil {
+		c.budget.Estimated = len(finalists)*c.SamplesPerIP + c.budget.Reserved
+		if c.budget.Estimated > c.budget.Limit {
+			c.budget.Exhausted = true
+			return 2, fmt.Errorf("budget-exhausted: estimated %d requests exceeds %d", c.budget.Estimated, c.budget.Limit)
+		}
+	}
 	collected := make(map[string][]Sample)
 	eliminated := make(map[string]string)
 	for _, ip := range finalists {
 		collected[ip] = []Sample{}
 	}
+	var interrupted error
+sampleRounds:
 	for round := 0; round < c.SamplesPerIP; round++ {
 		for n := range finalists {
 			if ctx.Err() != nil {
+				if c.SchemaVersion == 2 {
+					interrupted = ctx.Err()
+					break sampleRounds
+				}
 				return 1, ctx.Err()
 			}
 			ip := finalists[(n+round)%len(finalists)]
@@ -213,6 +201,10 @@ func runProbe(ctx context.Context, c Config, outputPath string, out, log io.Writ
 				continue
 			}
 			s := probeHTTPS(ctx, ip, c, nil)
+			if c.budget != nil && c.budget.Exhausted {
+				interrupted = fmt.Errorf("budget-exhausted during primary measurement")
+				break sampleRounds
+			}
 			collected[ip] = append(collected[ip], s)
 			if verbose {
 				fmt.Fprintf(log, "Sample %d/%d: %s %s %.0fms\n", round+1, c.SamplesPerIP, ip, s.Classification, s.TotalMs)
@@ -225,6 +217,10 @@ func runProbe(ctx context.Context, c Config, outputPath string, out, log io.Writ
 			}
 			select {
 			case <-ctx.Done():
+				if c.SchemaVersion == 2 {
+					interrupted = ctx.Err()
+					break sampleRounds
+				}
 				return 1, ctx.Err()
 			case <-time.After(time.Duration(c.RequestIntervalMs) * time.Millisecond):
 			}
@@ -234,6 +230,9 @@ func runProbe(ctx context.Context, c Config, outputPath string, out, log io.Writ
 	for _, ip := range finalists {
 		summary := summarize(ip, collected[ip], c.MinSuccessRate)
 		summary.EliminatedReason = eliminated[ip]
+		if interrupted != nil {
+			summary.EliminatedReason = "incomplete group measurement"
+		}
 		if summary.EliminatedReason != "" {
 			summary.Eligible = false
 		}
@@ -243,6 +242,9 @@ func runProbe(ctx context.Context, c Config, outputPath string, out, log io.Writ
 	ranking := []string{}
 	var suggested *string
 	for _, r := range ranked {
+		if c.SchemaVersion == 2 && !inCloudflare(r.IP, pool.ranges) {
+			continue
+		}
 		ranking = append(ranking, r.IP)
 	}
 	if len(ranking) > 0 {
@@ -293,6 +295,9 @@ func runProbe(ctx context.Context, c Config, outputPath string, out, log io.Writ
 		if _, err := out.Write(encoded); err != nil {
 			return 1, err
 		}
+	}
+	if interrupted != nil {
+		return 2, interrupted
 	}
 	if suggested == nil {
 		return 2, nil
@@ -381,4 +386,51 @@ func writeReport(path string, data []byte) (err error) {
 		return fmt.Errorf("output replaced but directory sync failed: %w", err)
 	}
 	return nil
+}
+
+func prepareCandidates(ctx context.Context, c Config, log io.Writer) (*candidatePool, error) {
+	data, err := os.ReadFile(c.CandidateFile)
+	if err != nil {
+		return nil, fmt.Errorf("read candidates: %w", err)
+	}
+	candidates, err := sampleCandidates(string(data), c.MaxCandidates, c.SampleOffset)
+	if err != nil {
+		return nil, err
+	}
+	public, statuses, err := publicCandidates(ctx, c, false)
+	if err != nil {
+		return nil, err
+	}
+	snapshot, snapshotStatus, err := loadCandidateSnapshot(c)
+	if err != nil {
+		return nil, err
+	}
+	public = unique(append(public, snapshot...))
+	if snapshotStatus != nil {
+		fmt.Fprintf(log, "Local snapshot: accepted=%d rejected=%d\n", snapshotStatus.Accepted, snapshotStatus.Rejected)
+	}
+	for _, s := range statuses {
+		fmt.Fprintf(log, "Source %s: %s, accepted=%d rejected=%d %s\n", s.URL, s.Status, s.Accepted, s.Rejected, s.Error)
+	}
+	var ranges []netip.Prefix
+	if c.SchemaVersion == 2 || len(c.CandidateSources) > 0 || c.CandidateSnapshotFile != "" {
+		ranges, err = loadCloudflareRanges(c.CloudflareRangesFile)
+		if err != nil {
+			return nil, err
+		}
+		filtered := []string{}
+		for _, ip := range candidates {
+			if inCloudflare(ip, ranges) {
+				filtered = append(filtered, ip)
+			}
+		}
+		candidates = filtered
+		for _, ip := range c.PinnedIPs {
+			if !inCloudflare(ip, ranges) {
+				return nil, fmt.Errorf("pinned IP is outside Cloudflare ranges: %s", ip)
+			}
+		}
+	}
+	candidates = selectCandidates(candidates, public, c.PinnedIPs, c.MaxCandidates, c.SampleOffset)
+	return &candidatePool{ips: candidates, sources: statuses, snapshot: snapshotStatus, ranges: ranges}, nil
 }

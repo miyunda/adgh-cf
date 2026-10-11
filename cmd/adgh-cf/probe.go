@@ -6,13 +6,16 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
 	"net"
 	"net/http"
 	"net/http/httptrace"
+	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -28,7 +31,16 @@ type Health struct {
 	Sealed      bool `json:"sealed"`
 	Standby     bool `json:"standby"`
 }
+type HTTPHop struct {
+	StatusCode int     `json:"statusCode"`
+	ElapsedMs  float64 `json:"elapsedMs"`
+}
 type Sample struct {
+	BodyTruncated bool      `json:"bodyTruncated,omitempty"`
+	Guarantee     string    `json:"guarantee,omitempty"`
+	Hops          []HTTPHop `json:"hops,omitempty"`
+	ConnectedIP   string    `json:"connectedIp,omitempty"`
+
 	IP             string   `json:"ip"`
 	Classification string   `json:"classification"`
 	Usable         bool     `json:"usable"`
@@ -88,20 +100,38 @@ func probeTCP(ctx context.Context, ip string, c Config) TCPResult {
 func probeHTTPS(parent context.Context, ip string, c Config, roots *x509.CertPool) (s Sample) {
 	start := time.Now()
 	s = Sample{IP: ip, Classification: "transport-error"}
+	if c.SchemaVersion == 2 {
+		s.Guarantee = "basic-https-response"
+		if c.HealthMode == "http" {
+			s.Guarantee = "configured-http-conditions"
+		}
+		if c.HealthMode == "openbao" {
+			s.Guarantee = "openbao-health"
+		}
+	}
 	// Trace hooks may finish on transport goroutines after a deadline. Snapshot their
 	// measurements under a lock rather than letting them mutate the returned sample.
 	var traceMu sync.Mutex
 	var tcpMs, tlsMs, ttfbMs *float64
+	var connectedIP string
 	defer func() {
 		traceMu.Lock()
 		defer traceMu.Unlock()
 		s.TCPMs, s.TLSMs, s.TTFBMs = tcpMs, tlsMs, ttfbMs
 		s.TotalMs = milliseconds(time.Since(start))
+		if c.SchemaVersion == 2 {
+			s.ConnectedIP = connectedIP
+		}
 	}()
 	ctx, cancel := context.WithTimeout(parent, time.Duration(c.HTTPSTimeoutMs)*time.Millisecond)
 	defer cancel()
 	var connectStart, tlsStart time.Time
 	trace := &httptrace.ClientTrace{
+		GotConn: func(info httptrace.GotConnInfo) {
+			traceMu.Lock()
+			defer traceMu.Unlock()
+			connectedIP, _, _ = net.SplitHostPort(info.Conn.RemoteAddr().String())
+		},
 		ConnectStart: func(_, _ string) { traceMu.Lock(); connectStart = time.Now(); traceMu.Unlock() },
 		ConnectDone: func(_, _ string, err error) {
 			traceMu.Lock()
@@ -131,26 +161,74 @@ func probeHTTPS(parent context.Context, ip string, c Config, roots *x509.CertPoo
 		DisableKeepAlives: true, DisableCompression: true, ForceAttemptHTTP2: false,
 	}
 	defer transport.CloseIdleConnections()
-	client := &http.Client{Transport: transport, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
 	host := c.Domain
 	if c.Port != 443 {
 		host = net.JoinHostPort(c.Domain, strconv.Itoa(c.Port))
 	}
-	req, err := http.NewRequestWithContext(httptrace.WithClientTrace(ctx, trace), http.MethodGet, "https://"+host+c.HealthPath, nil)
-	if err != nil {
-		s.Error = "invalid health request"
-		return
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Accept-Encoding", "identity")
-	response, err := client.Do(req)
-	if err != nil {
-		s.Error = transportError(ctx, err)
-		return
+	requestURL := "https://" + host + c.HealthPath
+	visited := map[string]bool{}
+	var response *http.Response
+	var err error
+	for hop := 0; ; hop++ {
+		if c.budget != nil && !c.budget.take() {
+			s.Classification = "budget-exhausted"
+			s.Error = "HTTP request budget exhausted"
+			return
+		}
+		visited[requestURL] = true
+		req, requestErr := http.NewRequestWithContext(httptrace.WithClientTrace(ctx, trace), http.MethodGet, requestURL, nil)
+		if requestErr != nil {
+			s.Error = "invalid health request"
+			return
+		}
+		req.Header.Set("Accept", "application/json")
+		if c.SchemaVersion == 2 && c.HealthMode != "openbao" {
+			req.Header.Set("Accept", "text/html,application/json;q=0.9,*/*;q=0.8")
+		}
+		req.Header.Set("Accept-Encoding", "identity")
+		hopStart := time.Now()
+		response, err = transport.RoundTrip(req)
+		if err != nil {
+			s.Error = transportError(ctx, err)
+			var certErr *tls.CertificateVerificationError
+			if c.SchemaVersion == 2 && errors.As(err, &certErr) {
+				s.Classification = "certificate-error"
+			}
+			return
+		}
+		if c.SchemaVersion == 2 {
+			s.Hops = append(s.Hops, HTTPHop{response.StatusCode, milliseconds(time.Since(hopStart))})
+		}
+		s.StatusCode = response.StatusCode
+		redirect := response.StatusCode == 301 || response.StatusCode == 302 || response.StatusCode == 303 || response.StatusCode == 307 || response.StatusCode == 308
+		if !redirect || c.SchemaVersion != 2 || c.HealthMode == "openbao" {
+			break
+		}
+		location := response.Header.Get("Location")
+		base, _ := url.Parse(requestURL)
+		next, parseErr := url.Parse(location)
+		response.Body.Close()
+		if parseErr == nil {
+			next = base.ResolveReference(next)
+		}
+		if parseErr != nil || location == "" || strings.ContainsAny(location, "\\#") || strings.IndexFunc(location, func(r rune) bool { return r <= 32 || r == 127 }) >= 0 || next.Scheme != "https" || next.User != nil || next.Fragment != "" || !strings.EqualFold(next.Hostname(), c.Domain) || effectivePort(next) != strconv.Itoa(c.Port) || hop >= 3 || visited[next.String()] {
+			s.Classification = "redirect-rejected"
+			s.Error = "configure the final URL: redirect must be same-origin HTTPS, at most 3 hops without loops"
+			return
+		}
+		requestURL = next.String()
 	}
 	defer response.Body.Close()
 	s.StatusCode = response.StatusCode
-	body, err := io.ReadAll(io.LimitReader(response.Body, int64(c.MaxResponseBytes)+1))
+	limit := int64(c.MaxResponseBytes) + 1
+	prefix := c.SchemaVersion == 2 && c.HealthMode != "openbao"
+	if prefix {
+		limit = int64(c.MaxResponseBytes)
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, limit))
+	if prefix && len(body) == c.MaxResponseBytes {
+		s.BodyTruncated = response.ContentLength < 0 || response.ContentLength > int64(c.MaxResponseBytes)
+	}
 	if err != nil {
 		s.Error = transportError(ctx, err)
 		return
@@ -158,6 +236,27 @@ func probeHTTPS(parent context.Context, ip string, c Config, roots *x509.CertPoo
 	if len(body) > c.MaxResponseBytes {
 		s.Classification = "invalid-response"
 		s.Error = "response exceeds configured byte limit"
+		return
+	}
+	if c.SchemaVersion == 2 && (c.HealthMode == "http" || c.HealthMode == "https") {
+		switch {
+		case strings.EqualFold(response.Header.Get("Cf-Mitigated"), "challenge"):
+			s.Classification = "cloudflare-challenge"
+		case response.StatusCode == 403:
+			s.Classification = "forbidden"
+		case response.StatusCode == 429:
+			s.Classification = "rate-limited"
+		case response.StatusCode >= 500:
+			s.Classification = "server-error"
+		case c.HealthMode == "https" && response.StatusCode >= 200 && response.StatusCode < 300:
+			s.Classification = "https-available"
+			s.Usable = true
+		case c.HealthMode == "http":
+			result := classifyHTTPHealth(response.StatusCode, body, c)
+			s.Classification, s.Usable, s.Error = result.Classification, result.Usable, result.Error
+		default:
+			s.Classification = "http-error"
+		}
 		return
 	}
 	if c.HealthMode == "http" {
@@ -194,8 +293,8 @@ func classifyHTTPHealth(status int, body []byte, c Config) Sample {
 	if !matched {
 		return Sample{Classification: "http-error", Error: "unexpected health HTTP status"}
 	}
-	if c.ExpectedBodyContains == "" || !bytes.Contains(body, []byte(c.ExpectedBodyContains)) {
-		return Sample{Classification: "invalid-response", Error: "expected health response marker not found"}
+	if (c.SchemaVersion != 2 && c.ExpectedBodyContains == "") || !bytes.Contains(body, []byte(c.ExpectedBodyContains)) {
+		return Sample{Classification: "invalid-response", Error: "expected health response marker not found within configured byte limit"}
 	}
 	return Sample{Classification: "http-healthy", Usable: true}
 }
@@ -213,4 +312,11 @@ func transportError(ctx context.Context, err error) string {
 		err = v.Unwrap()
 	}
 	return err.Error()
+}
+
+func effectivePort(u *url.URL) string {
+	if u.Port() == "" {
+		return "443"
+	}
+	return u.Port()
 }
