@@ -2,6 +2,12 @@
 
 更新：2026-10-08。本版本提供 `run --dry-run`、`run` 和 systemd 每小时任务。目标主机使用 systemd 已由用户确认；本文命令在目标 Linux 执行，开发 Mac 未运行 systemd 或连接真实 AdGuard Home。
 
+## v2 多域名部署
+
+多域名配置、报告和迁移见 [DOMAIN-GROUPS.md](DOMAIN-GROUPS.md)。下文单域名行为说明针对 v1；v2 保留独立组状态，所有切换（含组内对齐）均受冷却约束。不要让多个配置/状态文件同时管理相同域名。
+
+v2 正常运行默认上限 1800 秒，恢复最多再用 120 秒。新 service 模板 `TimeoutStartSec=125min` 可覆盖 maxRunSeconds 允许的最高 7200 秒及恢复余量，`TimeoutStopSec=130s` 给取消后的恢复留出时间。已有安装需手动更新 unit 并执行 daemon-reload；也可按实际 maxRunSeconds + 至少 120 秒配置更短的启动超时。
+
 ## 工作方式
 
 `probe` 仍不访问 AdGuard Home；`run` 才读取并管理配置域名的一条现有 IPv4 rewrite。首版不自动新增、删除规则，不处理重复规则、CNAME 或 IPv6 规则，也不启用被用户禁用的规则。
@@ -78,7 +84,7 @@ sudo systemctl enable --now adgh-cf.timer
 systemctl list-timers adgh-cf.timer
 ```
 
-开启 timer 意味着授权按配置自动更新该域名的现有 rewrite。任务每小时触发并随机延迟最多两分钟，错过的定时任务在恢复时补一次；机器无需常驻应用进程。service 最长 20 分钟，使用低权限专用账户、只写状态目录；手动和定时的 `run` 使用同一 stateFile 才能共享运行锁。
+开启 timer 意味着授权按配置自动更新该域名的现有 rewrite。任务每小时触发并随机延迟最多两分钟，错过的定时任务在恢复时补一次；机器无需常驻应用进程。新 service 模板最长 125 分钟（程序 v2 默认正常阶段仍为 30 分钟），使用低权限专用账户、只写状态目录；手动和定时的 `run` 使用同一 stateFile 才能共享运行锁。
 
 `/var/lib/adgh-cf/last-run.json` 为最近一次成功产出的完整报告，`optimizer.json` 保存最近 48 轮摘要（保留次数和中位数，不重复保存原始样本）、确认进度、切换时间和 pending。错误日志以 journald 为准：一次失败不会把旧完整报告自动改成最新报告。退出码 `0` 表示正常完成（包括保留现有地址），`1` 表示配置/API/DNS/写入验证等执行故障；`probe` 的无合格候选仍为 `2`。先不要放宽成功率门槛来掩盖家庭网络故障。
 

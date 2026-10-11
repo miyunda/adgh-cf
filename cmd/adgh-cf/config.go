@@ -14,6 +14,13 @@ import (
 )
 
 type Config struct {
+	SchemaVersion       int           `json:"schemaVersion,omitempty"`
+	Groups              []DomainGroup `json:"groups,omitempty"`
+	MaxRequestsPerGroup int           `json:"maxRequestsPerGroup,omitempty"`
+	MaxRunSeconds       int           `json:"maxRunSeconds,omitempty"`
+	budget              *requestBudget
+	prepared            *candidatePool
+
 	candidateProxy        *url.URL
 	adghUsername          string
 	adghPassword          string
@@ -50,7 +57,7 @@ type Config struct {
 	PinnedIPs             []string `json:"pinnedIps"`
 }
 
-func parseConfig(data []byte, base string) (Config, error) {
+func parseLegacyConfig(data []byte, base string) (Config, error) {
 	c := Config{HealthPath: "/v1/sys/health", Port: 443, MaxCandidates: 24, TCPConcurrency: 4, TCPTimeoutMs: 3000, HTTPSTimeoutMs: 5000, Finalists: 5, SamplesPerIP: 5, RequestIntervalMs: 300, MaxResponseBytes: 16384, MinSuccessRate: 1, BaselineDNSServers: []string{}}
 	c.CandidateSources = []string{}
 	c.PinnedIPs = []string{}

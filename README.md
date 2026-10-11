@@ -8,11 +8,54 @@
 
 ## 概览
 
-在家庭网络测量 Cloudflare CDN IPv4 对目标 HTTPS 服务的访问表现。支持 OpenBao/Vault 健康判断或显式配置的通用 HTTP 检查、公共候选源、只读测速，以及通过 `run` 更新指定域名的一条现有 AdGuard Home IPv4 rewrite。`probe`、`refresh`、`export` 不改 DNS。测速只使用 IPv4；名单下载直连或连接 IPv4 代理，代理的远端连接由 OpenClash 决定。
+在家庭网络测量 Cloudflare CDN IPv4 对目标 HTTPS 服务的访问表现。新配置默认检查普通 HTTPS 网站，支持显式 HTTP 条件和 OpenBao/Vault 健康判断、公共候选源、只读测速，以及通过 `run` 更新域名组内各域名的现有 AdGuard Home IPv4 rewrite。`probe`、`refresh`、`export` 不改 DNS。测速只使用 IPv4；名单下载直连或连接 IPv4 代理，代理的远端连接由 OpenClash 决定。
 
-当前进度、家庭实测和人工试用记录见 [STATUS.md](docs/STATUS.md)；后续设计与验收见 [PLAN.md](docs/PLAN.md)。用户手动将 DNS rewrite 改为 `104.17.128.164` 试用。2026-10-08 已实现自动更新和 systemd 每小时调度模板，部署与首次 dry-run 见 [DEPLOY.md](docs/DEPLOY.md)；真实家庭写入与定时触发待验证。
+当前进度、家庭实测和人工试用记录见 [STATUS.md](docs/STATUS.md)；后续设计与验收见 [PLAN.md](docs/PLAN.md)。用户手动将 DNS rewrite 改为 `104.17.128.164` 试用。2026-10-08 已实现自动更新和 systemd 每小时调度模板，部署与首次 dry-run 见 [DEPLOY.md](docs/DEPLOY.md)；2026-10-11 已验证多域名 service 组内对齐写入及 FreshRSS 客户端登录和功能，完整恢复验收仍待完成。
 
-当前待发布版本为 **0.1.1**，精简定时运行日志；升级变化见 [v0.1.1 更新说明](docs/releases/v0.1.1.md)。用户已验证家庭 dry-run 正常、service 实际运行和 timer 启用；自动切换结果仍待确认。示例域名和管理地址为通用占位值，复制示例后必须填写自己的环境。版本发布与升级见 [RELEASING.md](docs/RELEASING.md)，凭据与公开仓库边界见 [SECURITY.md](docs/SECURITY.md)。
+当前待发布版本为 **0.2.0**，新增多域名支持并包含日志精简；升级变化见 [v0.2.0 更新说明](docs/releases/v0.2.0.md)。用户已验证家庭 dry-run 正常、service 实际运行和 timer 启用；多域名组内对齐写入及 FreshRSS 客户端功能已确认，完整故障恢复仍待验收。示例域名和管理地址为通用占位值，复制示例后必须填写自己的环境。版本发布与升级见 [RELEASING.md](docs/RELEASING.md)，凭据与公开仓库边界见 [SECURITY.md](docs/SECURITY.md)。
+
+## 多域名支持（目标 Linux 待验收）
+
+这里的 v1/v2 是配置、状态和报告的格式版本，与软件发布版本 `v0.2.0` 分开管理；软件发布版本仍由 `VERSION` 决定。
+
+已实现 [通用 HTTPS 默认模式与域名组](docs/design/HTTPS-DOMAIN-GROUPS.md)：显式 v2 配置默认检查普通 HTTPS 页面，保留 HTTP/OpenBao，由主域名排名、全部组员复验后逐条更新，并提供 pending 恢复与条件补偿。旧单域名配置与默认行为保留。新示例见 [config.groups.example.json](examples/config.groups.example.json)，配置、命令、迁移和报告说明见 [多域名指南](docs/DOMAIN-GROUPS.md)。
+
+本地模拟验证与目标 Linux 实测分别记录在 [STATUS.md](docs/STATUS.md)。2026-10-11 已取得家庭 Linux 多域名组内对齐写入、程序 DNS/HTTPS 核对成功及用户 Web 界面确认；FreshRSS 已经 Chrome 页面、登录和功能验证，用户体感响应改善但无量化数据，完整恢复验收仍待完成；大陆可达候选分发、本地候选积累及 Linux/Windows hosts 输出继续不纳入本阶段。
+
+## v0.2.0 快速开始（家庭 Linux）
+
+新配置使用 `schemaVersion: 2`，成员省略 `mode` 就是普通网站 HTTPS 检查（`https`）；OpenBao 需要显式 `mode: "openbao"`。`http` 是另一个严格条件模式，需填写预期状态码。沿用旧单域名配置时仍默认 OpenBao，现有旧配置可以继续使用。
+
+在 v0.2.0 部署包**解压目录**内运行，程序路径为 `./adgh-cf`。测试一个普通网站：
+
+```sh
+./adgh-cf --version
+test -f config.https.json || cp config.https.example.json config.https.json
+# 编辑 config.https.json：将 primary、domain、url 换成自己的 Cloudflare 网站
+./adgh-cf probe --config config.https.json --output reports/website-probe.json
+```
+
+测试多个域名则从 `config.groups.example.json` 另建 `config.groups.json`，填写实际成员及模式；只保留需要测试的域名，示例中的文件服务和 OpenBao 也是占位值。成员可只有一个，也可多个共享候选 IP；不同网站需独立选址时拆成不同组。
+
+```sh
+test -f config.groups.json || cp config.groups.example.json config.groups.json
+# 编辑实际 primary、各成员 domain/url/mode 后执行：
+./adgh-cf probe --config config.groups.json --output reports/groups-probe.json
+# 只运行指定组，id 必须与配置一致
+./adgh-cf probe --config config.groups.json --group personal-sites
+```
+
+自动更新前，在新配置中加入 `adguardHomeUrl` 和 `adguardHomeDns`，沿用配置同目录 `.env` 的 AdGuard 凭据，并确保每个域名已有启用的 IPv4 rewrite。使用独立 stateFile，先处理旧配置的 pending、停旧 timer，避免新旧任务同时管理同一域名：
+
+```sh
+./adgh-cf run --dry-run --config config.groups.json --output reports/groups-dry-run.json
+# 核对报告后执行正式 run；首次通常只记录连续确认
+./adgh-cf run --config config.groups.json --output reports/groups-run.json
+```
+
+默认需至少两轮、间隔至少 5 分钟的正式 run；dry-run 不累计确认。报告的 `nextIp` 是拟切换值，实际切换看各组 `status` 和 `transaction.outcome`。完整配置、OpenBao 新格式示例及固定目录/systemd 操作见 [多域名运行指南](docs/DOMAIN-GROUPS.md)。固定目录部署（JSON 在 `/etc/adgh-cf/`）使用 `config.groups.run.example.json`，候选路径已设为 `/opt/adgh-cf/candidates/`；上面的相对路径模板用于解压目录运行。
+
+仓库源码运行需先 `make build`，将上述程序路径换成 `./build/adgh-cf`，示例复制源加上 `examples/`；在源码根目录保存新配置即可使用相同候选相对路径。
 
 ## 我的DNS环境
 
@@ -101,19 +144,20 @@ flowchart TD
 
 运行只需要对应架构的二进制、JSON 配置、候选列表，以及系统 CA 根证书。目标机器无需 Go、Node.js、Python 或 OpenSSL。编译与打包在开发电脑完成。
 
-先在 PT 主机运行 `uname -m`：`x86_64` 对应 amd64，`aarch64` 对应 arm64。将对应的发布包和 SHA256 文件传到 PT 主机。以 v0.1.1 amd64 为例，在普通用户可写目录执行：
+先在 PT 主机运行 `uname -m`：`x86_64` 对应 amd64，`aarch64` 对应 arm64。将对应的发布包和 SHA256 文件传到 PT 主机。以 v0.2.0 amd64 为例，在普通用户可写目录执行：
 
 ```sh
 mkdir -p adgh-cf
-sha256sum --ignore-missing --check adgh-cf-v0.1.1-SHA256SUMS
-tar -xzf adgh-cf-v0.1.1-linux-amd64.tar.gz -C adgh-cf
+sha256sum --ignore-missing --check adgh-cf-v0.2.0-SHA256SUMS
+tar -xzf adgh-cf-v0.2.0-linux-amd64.tar.gz -C adgh-cf
 cd adgh-cf
 ./adgh-cf --version
-test -f config.json || cp config.pt.example.json config.json
+test -f config.json || cp config.https.example.json config.json
+# 编辑配置中的 primary、domain 和 url；已有旧 OpenBao 配置可继续使用
 ./adgh-cf probe --config config.json --output reports/home.json
 ```
 
-先检查 `config.json` 中的域名、端口和健康检查规则。示例域名是占位值，不是代码默认值。只读 probe 不需要 OpenBao token 或 AdGuard Home 密码。
+先检查 `config.json` 中的域名与检查 URL；旧配置检查 domain/port/healthPath。示例域名是占位值，不是代码默认值。只读 probe 不需要 OpenBao token 或 AdGuard Home 密码。
 
 ### 通过 OpenClash 下载名单（推荐用于 PT 主机）
 
@@ -194,7 +238,9 @@ PT 下载尤其是上传占满出口时，会增加排队延迟和超时。先�
 
 健康结果结合 JSON 判断：active 与 standby 可作为可达候选；sealed、未初始化、HTML 挑战页、边缘限流和网络故障分别报告。standby 的可达性不等于已经验证其转发能力。无可用地址时报告错误，不猜测 IP。
 
-### 配置
+### 旧单域名配置（格式版本 1）
+
+新配置的默认模式与 groups 写法见上方快速开始及 [多域名指南](docs/DOMAIN-GROUPS.md)。以下 healthMode/healthPath 字段和参数表仅适用于旧配置。
 
 `healthPath` 原本就可配置；`healthMode` 选择响应判断。旧配置省略时保持 `openbao`，检查健康 JSON 和 initialized/sealed/standby。其他服务使用 `http` 并显式指定路径、预期成功状态码和非敏感响应标记；不能只凭任意 200 判断服务健康。示例 `config.http.example.json` 使用：
 

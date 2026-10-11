@@ -1,5 +1,5 @@
 [Unit]
-Description=Select Cloudflare IPv4 and update one AdGuard Home rewrite
+Description=Select Cloudflare IPv4 and update managed AdGuard Home rewrites
 Wants=network-online.target
 After=network-online.target
 
@@ -11,8 +11,8 @@ StateDirectory=adgh-cf
 StateDirectoryMode=0700
 WorkingDirectory=/var/lib/adgh-cf
 ExecStart=/opt/adgh-cf/adgh-cf run --config /etc/adgh-cf/config.json --output /var/lib/adgh-cf/last-run.json
-TimeoutStartSec=20min
-TimeoutStopSec=60s
+TimeoutStartSec=125min
+TimeoutStopSec=130s
 UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true

@@ -1,6 +1,67 @@
 # 项目进度与接续记录
 
-更新日期：2026-10-08（北京时间）。继续工作时先读本文件，再读 README.md、DEPLOY.md 的部署说明和 PLAN.md 的后续设计。本文记录实际完成情况；PLAN.md 中尚未实现的设计不代表现有功能。
+更新日期：2026-10-11（北京时间；本次实现多域名支持，真实 Linux 多域名运行验收仍待完成）。继续工作时先读本文件，再读 README.md、DEPLOY.md 的部署说明和 PLAN.md 的后续设计。本文记录实际完成情况；PLAN.md 中尚未实现的设计不代表现有功能。
+
+## 2026-10-11 故障恢复真机实测延期
+
+用户确认目前无法制造合适的故障场景，故障恢复的目标 Linux 实测留待以后有条件时进行。本地故障注入模拟测试已通过；真实正常切换、程序写后核对和 FreshRSS 客户端业务验证已有记录，可以继续正常使用与观察。延期项保留为未实测，不视为已通过，也不要求现在对日常服务制造故障。
+
+## 2026-10-11 FreshRSS 客户端验证通过
+
+真实组内对齐后，用户使用 Chrome 访问 FreshRSS，确认页面正常、可以登录、登录后功能正常。用户主观感受到响应速度提升，但未提供前后对照测量数据；记录为体验反馈，不换算提升百分比，也不宣称已经量化性能收益。
+
+FreshRSS 已取得从连续确认、真实 rewrite 更新、程序 API/DNS/HTTPS 写后核对、AdGuard Web 界面确认到客户端业务功能正常的证据。其余成员本次维持原 IP，全组探测通过；不将 FreshRSS 的浏览器验证扩展为其他成员的认证业务验证。真实故障回滚、重启恢复和完整专项方案 E 继续待验收。
+
+## 2026-10-11 多域名 service 第二轮：真实组内对齐成功
+
+用户提供第二轮 last-run.json，并在 AdGuard Home Web 界面确认 FreshRSS rewrite 已改为新 IP。报告 overallStatus=complete、group.status=switched、confirmations=2、transaction.outcome=switched。事务开始时间为北京时间 2026-10-11 10:23:08。
+
+| 成员角色 | old | next / actual | 进度 |
+| --- | --- | --- | --- |
+| 普通 HTTPS 主域名 | 104.17.133.69 | 104.17.133.69 | unchanged |
+| FreshRSS | 104.21.23.90 | 104.17.133.69 | written |
+| OpenBao | 104.17.133.69 | 104.17.133.69 | unchanged |
+
+主域名排名仍以 `104.17.133.69` 为首（5/5、TTFB 中位数约 485ms），全组每成员两次候选复验及一次写前复验通过。FreshRSS 新地址候选检查两次均为 302→200（完整 TTFB 约 1869ms / 1814ms），写前约 1280ms；旧地址本轮再次超时。此轮理由仍是 group alignment，不把主域名未变更称为性能改善。
+
+正常阶段 HTTP 请求 used=28/160、estimated=49、未耗尽；recoveryRequests=4 是独立核对阶段的 HTTP 请求计数（含 FreshRSS 的跳转），不表示发生回滚。按当前实现，只有逐成员 API 回读、指定 AdGuard DNS 核对、经解析 IP 的 HTTPS 校验及 actual connection IP 检查通过，并成功保存清除 pending 的状态，才能返回 switched。报告未单独导出写后探测原始样本，本次依据 switched 完成条件与逐成员 actual 值判断程序核对成功；Web 界面确认是用户补充的实际规则证据。
+
+至此已取得真实家庭出口的连续确认、单成员写入/其他成员 unchanged，以及程序写后验证成功记录。FreshRSS 的 Chrome 页面、登录及功能验证已随后完成（见上方记录）；其他成员的业务验证、真实故障回滚、重启恢复及完整专项方案 E 仍待验收，不因这次正常路径成功标记全部完成。
+
+## 2026-10-11 多域名 service 首轮正式运行
+
+用户提供家庭 Linux 以 service 运行后的 last-run.json（格式版本 2、mode=run、overallStatus=complete）。一组包含普通 HTTPS 主域名、FreshRSS 和显式 OpenBao，报告显示：
+
+- 当前主域名和 OpenBao 均使用 `104.17.133.69`，FreshRSS 使用 `104.21.23.90`。读取 rewrite 和指定 AdGuard DNS 核对通过后才进入测量。
+- TCP 初筛 25 个地址、7 个成功；主域名合格排名前两项为 `104.17.133.69`（5/5、中位数约 498ms）和 `103.31.4.18`（5/5、约 638ms）。
+- 全组建议为 `104.17.133.69`，每个成员在该候选上两次复验均通过。主域名普通 HTTPS 可用，OpenBao 返回 active；FreshRSS 两次均跟随同源 302 后得到 200，完整 TTFB 约 1989ms / 1902ms。普通网页结果只保证基本响应，不证明登录后的业务功能。
+- FreshRSS 旧 IP 本轮检查在收到 302 后超时，不能由一次样本判定永久失效。
+- 请求预算 limit=160、estimated=49、used=27、exhausted=false，恢复请求为 0。
+- 决定为 `awaiting confirmation 1/2: group alignment; no primary performance improvement claimed`。主域名已经使用胜出 IP，此轮属于组内对齐观察；没有 nextIp、transaction 或实际更新，不声称改善主域名性能。
+
+这份报告证明真实出口的一轮分组测量、全组兼容性复验和首次确认完成。下一轮正式 run 至少相隔 5 分钟且不超过 3 小时，仍须同一候选胜出、满足冷却、写前复验和规则重读后才可更新；随后需要逐域名写后 DNS、HTTPS 和客户端访问记录。真实更新、回滚和完整专项方案 E 继续待验收。
+
+此前用户故意未创建主域名 rewrite，dry-run 返回 found 0 并停止，验证缺失规则时拒绝自动运行的边界；程序不自动新增 rewrite。
+
+## 2026-10-11 单域名升级反馈与运行说明
+
+用户报告 v0.2.0 沿用原单域名 OpenBao 配置正常工作。本次未提供具体命令及逐项报告，因此记录为用户试用反馈，不能据此认定多域名、真实切换或回滚已经验收。
+
+已在 README 增加部署包的快速开始，新增普通 HTTPS 网站最小配置 `config.https.example.json`，并补齐多域名指南中的新格式 OpenBao、Linux 解压目录、固定目录和 systemd 运行步骤。新格式省略 mode 默认 https；OpenBao 显式指定 openbao；旧配置默认保持 OpenBao。
+
+## 2026-10-10 多域名实现（目标 Linux 待验收）
+
+新增功能版本由 0.1.1 提升为 **0.2.0**；VERSION、版本更新说明与部署包命名已同步。配置/状态/报告的格式版本 1/2 保持独立。见 [v0.2.0 更新说明](releases/v0.2.0.md)，当前尚未发布。
+
+已形成 [通用 HTTPS 默认模式与域名组方案](design/HTTPS-DOMAIN-GROUPS.md)，作为下一阶段实施依据：显式 v2 配置默认普通 HTTPS，保留严格 HTTP 和 OpenBao；一个主域名排名，组内全部域名复验，逐条 AdGuard Home 更新与条件恢复。旧配置默认行为不变。方案包含配置草案、请求预算、迁移边界、阶段 A–E 与验收标准。
+
+本地已实现 v1/v2 配置分离、三种模式语义、同源跳转、请求/时间预算、主域名排名与最多前三候选的全组复验、组内对齐、独立状态/报告、逐成员 pending 日志和条件补偿。新增模拟测试覆盖配置边界、TLS/跳转/响应前缀、次选回退、连续确认、提交响应丢失、各写入及持久化边界恢复、人工修改、旧 IP 不健康、DNS 失败、锁和 dry-run。可运行示例与迁移说明见 [DOMAIN-GROUPS.md](DOMAIN-GROUPS.md)。
+
+本地 `make check test build linux` 已通过：go vet、gofmt/脚本/公开边界检查、全量 race 测试、本机构建、Linux amd64/arm64 打包和 SHA256 校验。测试需要回环 TCP/TLS/DNS，已在允许本机监听的环境运行。
+
+A–D 已有实现与本地模拟测试；E 已取得家庭 Linux 多域名 service 连续两轮、真实组内对齐写入及程序 DNS/HTTPS 核对成功记录，FreshRSS 客户端验证已完成，其他成员业务验证及故障恢复等完整验收仍待完成，不能标记第 1 项完成。大陆可达候选分发/本地候选积累、Linux/Windows hosts 输出均标记为 **完成第 1 项全部验收后才考虑**，不纳入当前实施范围。
+
+下文发布及部署反馈保留原记录时间，不能据本次文档更新认定真实切换或回滚已验证。
 
 ## 发布准备与真实部署反馈
 
@@ -82,6 +143,8 @@
 用户已验证 API 为 Basic Auth 的 `GET /control/rewrite/list` 与 `PUT /control/rewrite/update`（请求含 target 和 update，各有 domain/answer）。现实现沿用这两个 API；无规则时要求手动创建，不自动新增。AdGuard Home 地址来自配置，真实密码不得写进文档。
 
 ## 下次从这里继续
+
+发展工作按专项方案 A–E 推进；以下是现有家庭部署的待验收路径，与新功能规划分别跟踪。
 
 1. 先了解人工试用期间的实际体验与故障情况；读取当前配置和规则，尊重用户已手动设置的地址。
 2. 在不同时间窗口复测，固定保留当前试用 IP、原可用候选和几个备用；用独立报告文件保留结果。需要原始 DNS 对照时配置不经过 rewrite 的可达解析器。

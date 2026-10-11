@@ -33,8 +33,9 @@ case "${1:-}" in
       cp examples/.env.example examples/config*.example.json "$package_dir/"
       if [[ -f LICENSE ]]; then cp LICENSE "$package_dir/"; fi
       cp candidates/cloudflare-ipv4.txt candidates/community-ipv4.txt "$package_dir/candidates/"
-      mkdir -p "$package_dir/docs/releases" "$package_dir/deploy/systemd"
-      cp docs/PLAN.md docs/STATUS.md docs/DEPLOY.md docs/RELEASING.md docs/SECURITY.md "$package_dir/docs/"
+      mkdir -p "$package_dir/docs/releases" "$package_dir/docs/design" "$package_dir/deploy/systemd"
+      cp docs/DOMAIN-GROUPS.md docs/PLAN.md docs/STATUS.md docs/DEPLOY.md docs/RELEASING.md docs/SECURITY.md "$package_dir/docs/"
+      cp docs/design/HTTPS-DOMAIN-GROUPS.md "$package_dir/docs/design/"
       cp "docs/releases/v$build_version.md" "$package_dir/docs/releases/"
       cp deploy/systemd/adgh-cf.service deploy/systemd/adgh-cf.timer "$package_dir/deploy/systemd/"
       package_name="adgh-cf-v$build_version-linux-$arch.tar.gz"
