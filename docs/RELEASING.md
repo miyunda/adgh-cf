@@ -15,7 +15,7 @@
 - 官方 checkout/setup-go/upload-artifact 固定到完整提交 SHA，Dependabot 每月提出更新；默认 token 只读，只有 tag Release job 获取 contents:write。工作流不使用 pull_request_target，不需要家庭代理、AdGuard 或 OpenBao 凭据。
 - 构建 Go 固定为已验证的 1.27.1；最低源代码版本为 go.mod 中的 1.24。Go 和 Actions 的安全更新需持续检查，固定版本不代表可以永久不更新。当前不宣称 tar 包能逐字节复现；压缩包 SHA256 用于核对下载完整性，不替代可信发布来源或签名。
 
-2026-10-08 已确认初始分支及两个 Dependabot PR 的 CI 在真实 Linux runner 上通过；tag Release 工作流仍待首次运行验证。仓库默认分支为 `main`。启用 Secret scanning/Push protection（按仓库可用功能）、保护默认分支，要求 CI 通过；限制谁能推送发布标签。若设置分支规则要求 PR，启用前先确认单人维护时的操作路径，不加入多余审批。
+仓库默认分支为 `main`，当前分支保护要求通过 PR 合并且 `check` 成功、审查线程已解决，不要求额外审批。每次发布仍需核对本次提交的 CI 和 tag Release 工作流，不能使用早期版本的成功记录代替；Secret scanning/Push protection 按仓库可用功能配置。
 
 建议发布顺序：
 
@@ -28,7 +28,7 @@
 
 ## 升级已有安装
 
-升级保留 `/etc/adgh-cf/config.json`、`.env`、密码文件和 `/var/lib/adgh-cf` 的完整状态。不要用示例配置覆盖它们。先阅读对应版本说明，确认是否涉及 unit、配置或状态迁移；不承诺老二进制能读取所有未来新状态。
+升级保留 `/etc/adgh-cf/` 中的全部实际配置（例如 `config.json` 或 `config.groups.json`）、`.env`、密码文件，以及 `/var/lib/adgh-cf/` 的完整状态。不要用示例覆盖它们；已有 service override 也要保留。先阅读对应版本说明，确认是否涉及 unit、配置或状态迁移；不承诺老二进制能读取所有未来新状态。
 
 以下以 v0.2.0 amd64 为例，在存有下载包和 SHA256 文件的临时目录操作：
 
@@ -38,23 +38,30 @@ mkdir -p release-v0.2.0
 tar -xzf adgh-cf-v0.2.0-linux-amd64.tar.gz -C release-v0.2.0
 ./release-v0.2.0/adgh-cf --version
 
+# 查看基础 unit 与 override，确认当前生效的 ExecStart --config：
+systemctl cat adgh-cf.service
+# 以下以已启用的格式 2 配置为例；旧单域名安装改为 /etc/adgh-cf/config.json
+adgh_config_path=/etc/adgh-cf/config.groups.json
+sudo -u adgh-cf test -r "$adgh_config_path"
 sudo systemctl stop adgh-cf.timer
 systemctl is-active adgh-cf.service
 ```
 
-如果 service 正在运行，等待结束再继续，不强制打断写入。升级前将现有二进制和状态备份到 root 私有目录；其中状态可能含 pending，先检查是否有未完成变更。配置/密码的备份也必须保持私有，不能放在源码仓库。备份目录与版本号应唯一，避免覆盖上一次备份。
+`adgh_config_path` 必须与当前 service 最终生效的 `--config` 一致，不根据文件名猜测格式；文件存在不代表 service 正在使用它。以下命令在同一 shell 中继续执行。如果 service 正在运行，等待结束，不强制打断写入。升级前将现有二进制和状态备份到 root 私有目录；其中状态可能含 pending，先使用原配置处理未完成变更。配置/密码的备份也必须保持私有，不能放在源码仓库。备份目录与版本号应唯一，避免覆盖上一次备份。
 
 ```sh
 sudo install -d -m 700 /var/backups/adgh-cf
-sudo cp /opt/adgh-cf/adgh-cf /var/backups/adgh-cf/adgh-cf-before-v0.2.0
-sudo cp -a /var/lib/adgh-cf /var/backups/adgh-cf/state-before-v0.2.0
+adgh_backup_dir=$(sudo mktemp -d /var/backups/adgh-cf/before-v0.2.0.XXXXXX)
+sudo cp /opt/adgh-cf/adgh-cf "$adgh_backup_dir/adgh-cf"
+sudo cp -a /var/lib/adgh-cf "$adgh_backup_dir/state"
+sudo cp -a /etc/adgh-cf "$adgh_backup_dir/config"
 sudo install -m 755 release-v0.2.0/adgh-cf /opt/adgh-cf/adgh-cf.next
 sudo mv /opt/adgh-cf/adgh-cf.next /opt/adgh-cf/adgh-cf
 
-sudo -u adgh-cf /opt/adgh-cf/adgh-cf run --dry-run --config /etc/adgh-cf/config.json --output /var/lib/adgh-cf/dry-run.json
+sudo -u adgh-cf /opt/adgh-cf/adgh-cf run --dry-run --config "$adgh_config_path" --output /var/lib/adgh-cf/dry-run.json
 ```
 
-仅当本次升级说明要求更新 service/timer 时重新安装 unit、校验并 daemon-reload；仅当要求更新候选快照时更新 candidates。确认 dry-run 正常、无未处理 pending 后恢复原先已启用的 timer：
+仅当本次升级说明要求更新 service/timer 时重新安装 unit、校验并 daemon-reload，保留新配置的 ExecStart override；更新后再用 `systemctl cat adgh-cf.service` 核对有效配置路径。仅当要求更新候选快照时更新 candidates。上述流程是沿用当前配置的二进制升级；另行启用格式 2 按 [多域名迁移指南](DOMAIN-GROUPS.md#从-v1-迁移和退回) 操作。确认 dry-run 正常、无未处理 pending 后恢复原先已启用的 timer：
 
 ```sh
 sudo systemctl start adgh-cf.timer

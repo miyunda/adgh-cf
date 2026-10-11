@@ -2,7 +2,7 @@
 
 本文的 v1/v2 指配置、状态和报告的格式版本（整数 1/2），不是软件发布版本。软件版本仍使用 `v0.2.0` 这样的格式，由 `VERSION` 管理；一次软件发布可以同时支持两种配置格式。下文“迁移到 v2”表示迁移到配置格式第 2 版，不表示升级到软件 v2.0.0。
 
-2026-10-10：v2 已在本地实现并提供模拟测试；目标家庭 Linux 的多域名 probe、dry-run、实际更新、DNS 与客户端访问仍待验收。不得把交叉编译或模拟服务结果当作公网试用记录。
+更新：2026-10-11。格式 2 已实现并通过本地模拟测试；家庭 Linux 已取得连续两轮 service、真实组内对齐、程序 API/DNS/HTTPS 核对及 FreshRSS 客户端验证记录。故障恢复真机实测已延期，完整验收仍待完成，详见本文末尾及 [STATUS.md](STATUS.md)。
 
 ## 配置与命令（部署包中的运行步骤）
 
@@ -61,7 +61,7 @@ test -f config.groups.json || cp config.groups.example.json config.groups.json
 
 默认运行全部组；`--group` 后填写配置中的 id。共享候选 IP 的网站放同一组，需要各自独立选址的网站放不同组。
 
-路径相对配置文件目录，`--output` 相对当前工作目录。`stateFile` 必须显式填写独立的新路径；probe 不读取该状态文件。仓库开发运行先 `make build`，用 `./build/adgh-cf`，并从 `examples/` 复制示例到源码根目录；部署包内示例已经在根目录，使用 `./adgh-cf`。
+JSON 中的相对文件路径基于配置文件目录，`--output` 相对当前工作目录；`.env` 从 JSON 同目录读取。完整目录与模板对应见 [DEPLOY.md](DEPLOY.md#目录与模板选择)。`stateFile` 必须显式填写独立的新路径；probe 不读取该状态文件。仓库开发运行先 `make build`，用 `./build/adgh-cf`，并从 `examples/` 复制示例到源码根目录；部署包内示例已经在根目录，使用 `./adgh-cf`。
 
 最多 4 组、总计 16 个域名、每组 8 个成员。组 ID 唯一且稳定，primary 必须属于成员；域名跨组不得重复，大小写和末尾单个点会规范化。URL 仅允许同域名 HTTPS 443，不接受用户名密码、fragment 或控制字符；查询参数不得放秘密。整份配置始终校验，`--group` 不能绕过无效的其他组。refresh/export 不接受 `--group`。
 
@@ -118,6 +118,8 @@ sudo -u adgh-cf /opt/adgh-cf/adgh-cf run --dry-run --config /etc/adgh-cf/config.
 
 固定目录部署的分工是：`/etc/adgh-cf/` 放 JSON 配置与 `.env`，`/opt/adgh-cf/` 放程序和静态候选文件，`/var/lib/adgh-cf/` 放状态、缓存和报告。
 
+本节假设已按 [DEPLOY.md](DEPLOY.md#安装旧单域名配置到固定目录) 建立服务账户、固定目录和 systemd unit；全新安装先完成这些基础步骤，再启用新配置。
+
 **不要直接将解压目录使用的 `config.groups.example.json` 搬进 /etc 后运行。** 它的 `candidates/...` 相对路径会解析为 `/etc/adgh-cf/candidates/...`，不会因为二进制在 /opt 或 WorkingDirectory 在 /var/lib 而改变。固定目录部署使用 **`config.groups.run.example.json`**，已填写下面的绝对路径。
 
 启用新配置时先停旧 timer、等待当前 service 完成并用旧配置处理 pending。在新版部署包解压目录中，只在新配置尚不存在时安装模板：
@@ -127,7 +129,7 @@ sudo test -f /etc/adgh-cf/config.groups.json || sudo install -o root -g adgh-cf 
 sudoedit /etc/adgh-cf/config.groups.json
 ```
 
-已有 `config.groups.json` 则直接编辑原文件，保留实际域名和管理地址。不要覆盖旧单域名 config.json；与旧配置同目录可继续加载原 `.env`。将下列同名字段改为绝对路径（这是字段片段，不是完整配置）：
+已有 `config.groups.json` 则直接编辑原文件，保留实际域名和管理地址。不要覆盖旧单域名 config.json；新命令使用 `/etc/adgh-cf/config.groups.json`，因此凭据文件明确为 **`/etc/adgh-cf/.env`**，与旧配置共用。`adguardHomeUrl`、`adguardHomeDns` 写在 JSON 顶层，用户名/密码写在 `.env`；不能只填凭据而省略管理地址。将下列同名字段改为绝对路径（这是字段片段，不是完整配置）：
 
 ```json
 "candidateFile": "/opt/adgh-cf/candidates/cloudflare-ipv4.txt",
@@ -156,7 +158,7 @@ sudo -u adgh-cf /opt/adgh-cf/adgh-cf run --config /etc/adgh-cf/config.groups.jso
 
 新配置须让 adgh-cf 服务账户可读，权限可沿用原配置的 root:adgh-cf、0640。正式 run 受连续确认和冷却限制，首次通常只记录观察；dry-run 不推进确认。
 
-手动验证后，以 `sudo systemctl edit adgh-cf.service` 设置以下 override，将定时任务改为新配置并给恢复留出时间：
+手动验证后，以 `sudo systemctl edit adgh-cf.service` 设置以下 override，将定时任务改为新配置并给恢复留出时间。基础 unit 仍默认使用 `config.json`；实际启用新配置依靠此 override，之后升级或排障也应以合并后的 ExecStart 为准：
 
 ```ini
 [Service]
@@ -169,6 +171,8 @@ TimeoutStopSec=130s
 ```sh
 sudo systemd-analyze verify /etc/systemd/system/adgh-cf.service
 sudo systemctl daemon-reload
+systemctl cat adgh-cf.service
+# 核对最终 ExecStart 指向 config.groups.json，再运行：
 sudo systemctl start adgh-cf.service
 sudo journalctl -u adgh-cf.service -n 60 --no-pager
 # 确认 service 与报告正常后，恢复原已启用的 timer
@@ -199,4 +203,4 @@ v1 HTTP 仍强制标记且响应超限失败；v2 HTTP 标记可省略且仅检�
 
 2026-10-11 已取得连续两轮 service 报告、三个成员的全组复验、FreshRSS 真实组内对齐和程序写后核对结果，用户也在 AdGuard Web 界面确认规则已更新；详见 [STATUS.md](STATUS.md)。FreshRSS 的 Chrome 页面、登录和功能已验证正常，体感响应改善没有量化数据；其他成员业务验证与故障恢复仍待完成，以下是完整验收要求。
 
-在实际家庭出口至少使用两个域名，保留每轮独立报告。记录二进制版本/构建提交、日期、组配置摘要（无秘密）、probe、dry-run、两轮相隔至少 5 分钟的 run、写前后每个域名的 API/DNS 值，以及客户端实际访问。确认无关 rewrite 不变，观察 timer、运行锁及重启恢复。真实切换和回滚未取得记录前，专项方案 E 和整个第 1 项保持待验收，后续候选分发及 hosts 输出不启动。
+在实际家庭出口至少使用两个域名，保留每轮独立报告。记录二进制版本/构建提交、日期、组配置摘要（无秘密）、probe、dry-run、两轮相隔至少 5 分钟的 run、写前后每个域名的 API/DNS 值，以及客户端实际访问。确认无关 rewrite 不变，观察 timer、运行锁及重启恢复。正常切换已有记录；剩余业务和故障恢复验收未完成前，专项方案 E 和整个第 1 项保持部分完成，后续候选分发及 hosts 输出不启动。

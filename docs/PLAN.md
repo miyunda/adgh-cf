@@ -1,12 +1,12 @@
 # adgh-cf 项目规划
 
-## 当前发展顺序（2026-10-10）
+## 当前发展顺序（2026-10-11）
 
-下一阶段优先完成 **通用 HTTPS 默认模式 + 域名组设计**，详细方案见 [设计与验收计划](design/HTTPS-DOMAIN-GROUPS.md)。本地实现已推进至 A–D，E 的文档与打包已准备，真实 Linux 多域名验收仍待完成；整个第 1 项尚未验收通过，使用说明以 README 和 DOMAIN-GROUPS.md 为准。
+当前工作为 **通用 HTTPS 默认模式 + 域名组**，详细方案见 [设计与验收计划](design/HTTPS-DOMAIN-GROUPS.md)。A–D 已实现并通过本地模拟测试，E 已取得家庭 Linux 正常组内对齐、程序写后核对和 FreshRSS 客户端验证记录。故障恢复真机实测已延期，完整验收待完成；使用说明以 README 和 DOMAIN-GROUPS.md 为准。
 
 | 顺序 | 方向 | 状态与启动条件 |
 | --- | --- | --- |
-| 1 | 通用 HTTPS 默认模式、保留严格 HTTP/OpenBao、主域名排名与全组复验、兼容配置和多域名更新恢复 | 当前唯一明确的下一阶段；按专项方案 A–E 实施和验收 |
+| 1 | 通用 HTTPS 默认模式、保留严格 HTTP/OpenBao、主域名排名与全组复验、兼容配置和多域名更新恢复 | 已实现并提交功能分支；正常切换已实测，剩余验收继续跟踪 |
 | 2 | 大陆可达候选分发与本地候选积累 | 完成第 1 项全部验收后才考虑；未启动、不承诺版本或日期 |
 | 3 | Linux / Windows hosts 输出 | 完成第 1 项全部验收后才考虑；未启动、不提前建设后端框架 |
 
@@ -14,7 +14,7 @@
 
 ## 首版设计记录
 
-以下保留首版设计背景及当时设想，含未实现事项，不作为下一阶段任务清单。涉及服务对象、探测默认值、域名组、配置迁移及组更新时，以专项方案为准；自动新增规则、独立 health 任务等不因此进入本阶段。实际完成情况仍以 STATUS.md 为准。
+从本节至文末保留首版设计背景及当时设想，不是当前使用说明，含未实现的自动新增规则、health/status 命令、连接复用指标、AAAA/HTTPS/SVCB 自动核对和 systemd credentials 集成。当前实现不会执行这些设想，不作为下一阶段任务清单。涉及服务对象、探测默认值、域名组、配置迁移及组更新时，以专项方案为准；实际完成情况以 [STATUS.md](STATUS.md) 为准。
 
 状态：2026-10-08 已实现名单代理、测速提前淘汰、AdGuard Home run/dry-run、连续确认/冷却、状态/运行锁、写后验证/条件回滚和 systemd 每小时模板。家庭旧版测速已验证；新版真实写入和 Linux 定时部署待验收，步骤见 DEPLOY.md。用户手动试用 `104.17.128.164`。实际完成情况以 [STATUS.md](STATUS.md) 为准；下文为总体设计，仍包含尚未实现项（自动新增规则、独立 health 任务、跨轮评分等）。
 
@@ -190,4 +190,4 @@ systemd oneshot service + timer 负责周期运行，使用专用低权限账户
 - systemd credentials：https://github.com/systemd/systemd/blob/main/docs/CREDENTIALS.md
 - OpenBao HTTP API 与健康接口：https://openbao.org/api-docs/ ，https://openbao.org/api-docs/system/health/
 
-最初规划阶段仅检查目录状态并查阅官方资料。后续已初始化 feat/read-only-probe 分支、迁移到 Go 并实现自动更新；目前只连接模拟 AdGuard Home 验证写入，未访问真实 API、修改真实 DNS 或执行 commit。用户的人工 DNS 修改另见 STATUS.md。
+本节记录截至首版开发阶段：当时仅连接模拟 AdGuard Home 验证写入，开发机未操作家庭真实 API 或 DNS。其后的用户部署实测和功能分支提交推送见 [STATUS.md](STATUS.md)，不能将这里的历史状态当作当前结论。

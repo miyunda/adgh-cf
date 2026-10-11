@@ -10,15 +10,15 @@
 
 在家庭网络测量 Cloudflare CDN IPv4 对目标 HTTPS 服务的访问表现。新配置默认检查普通 HTTPS 网站，支持显式 HTTP 条件和 OpenBao/Vault 健康判断、公共候选源、只读测速，以及通过 `run` 更新域名组内各域名的现有 AdGuard Home IPv4 rewrite。`probe`、`refresh`、`export` 不改 DNS。测速只使用 IPv4；名单下载直连或连接 IPv4 代理，代理的远端连接由 OpenClash 决定。
 
-当前进度、家庭实测和人工试用记录见 [STATUS.md](docs/STATUS.md)；后续设计与验收见 [PLAN.md](docs/PLAN.md)。用户手动将 DNS rewrite 改为 `104.17.128.164` 试用。2026-10-08 已实现自动更新和 systemd 每小时调度模板，部署与首次 dry-run 见 [DEPLOY.md](docs/DEPLOY.md)；2026-10-11 已验证多域名 service 组内对齐写入及 FreshRSS 客户端登录和功能，完整恢复验收仍待完成。
+当前进度与家庭实测记录见 [STATUS.md](docs/STATUS.md)；后续设计与验收见 [PLAN.md](docs/PLAN.md)。部署与首次 dry-run 见 [DEPLOY.md](docs/DEPLOY.md)；2026-10-11 已验证多域名 service 组内对齐写入及 FreshRSS 客户端登录和功能，故障恢复真机实测已延期。
 
 当前待发布版本为 **0.2.0**，新增多域名支持并包含日志精简；升级变化见 [v0.2.0 更新说明](docs/releases/v0.2.0.md)。用户已验证家庭 dry-run 正常、service 实际运行和 timer 启用；多域名组内对齐写入及 FreshRSS 客户端功能已确认，完整故障恢复仍待验收。示例域名和管理地址为通用占位值，复制示例后必须填写自己的环境。版本发布与升级见 [RELEASING.md](docs/RELEASING.md)，凭据与公开仓库边界见 [SECURITY.md](docs/SECURITY.md)。
 
-## 多域名支持（目标 Linux 待验收）
+## 多域名支持（正常切换已实测，完整验收待完成）
 
 这里的 v1/v2 是配置、状态和报告的格式版本，与软件发布版本 `v0.2.0` 分开管理；软件发布版本仍由 `VERSION` 决定。
 
-已实现 [通用 HTTPS 默认模式与域名组](docs/design/HTTPS-DOMAIN-GROUPS.md)：显式 v2 配置默认检查普通 HTTPS 页面，保留 HTTP/OpenBao，由主域名排名、全部组员复验后逐条更新，并提供 pending 恢复与条件补偿。旧单域名配置与默认行为保留。新示例见 [config.groups.example.json](examples/config.groups.example.json)，配置、命令、迁移和报告说明见 [多域名指南](docs/DOMAIN-GROUPS.md)。
+已实现 [通用 HTTPS 默认模式与域名组](docs/design/HTTPS-DOMAIN-GROUPS.md)：显式 v2 配置默认检查普通 HTTPS 页面，保留 HTTP/OpenBao，由主域名排名、全部组员复验后逐条更新，并提供 pending 恢复与条件补偿。旧单域名配置与默认行为保留。新示例为 `config.groups.example.json`（源码在 `examples/`，部署包在根目录），配置、命令、迁移和报告说明见 [多域名指南](docs/DOMAIN-GROUPS.md)。
 
 本地模拟验证与目标 Linux 实测分别记录在 [STATUS.md](docs/STATUS.md)。2026-10-11 已取得家庭 Linux 多域名组内对齐写入、程序 DNS/HTTPS 核对成功及用户 Web 界面确认；FreshRSS 已经 Chrome 页面、登录和功能验证，用户体感响应改善但无量化数据，完整恢复验收仍待完成；大陆可达候选分发、本地候选积累及 Linux/Windows hosts 输出继续不纳入本阶段。
 
@@ -54,6 +54,8 @@ test -f config.groups.json || cp config.groups.example.json config.groups.json
 ```
 
 默认需至少两轮、间隔至少 5 分钟的正式 run；dry-run 不累计确认。报告的 `nextIp` 是拟切换值，实际切换看各组 `status` 和 `transaction.outcome`。完整配置、OpenBao 新格式示例及固定目录/systemd 操作见 [多域名运行指南](docs/DOMAIN-GROUPS.md)。固定目录部署（JSON 在 `/etc/adgh-cf/`）使用 `config.groups.run.example.json`，候选路径已设为 `/opt/adgh-cf/candidates/`；上面的相对路径模板用于解压目录运行。
+
+固定目录中，`/etc/adgh-cf/` 存配置与 `.env`，`/opt/adgh-cf/` 存程序和静态候选，`/var/lib/adgh-cf/` 存状态、缓存和报告。相对文件路径以 JSON 目录为基准，`--output` 以当前工作目录为基准；模板选择与路径规则见 [目录与模板选择](docs/DEPLOY.md#目录与模板选择)。
 
 仓库源码运行需先 `make build`，将上述程序路径换成 `./build/adgh-cf`，示例复制源加上 `examples/`；在源码根目录保存新配置即可使用相同候选相对路径。
 
@@ -161,13 +163,26 @@ test -f config.json || cp config.https.example.json config.json
 
 ### 通过 OpenClash 下载名单（推荐用于 PT 主机）
 
-另存代理下载配置，保留原配置；`.env` 必须与使用的 JSON 配置在同一目录：
+以下在部署包解压目录中，复制已经填好域名和模式的 `config.json`，为其增加名单下载设置；保留原配置及其格式，不改用旧 OpenBao 模板。`.env` 必须与使用的 JSON 配置在同一目录：
 
 ```sh
-cp config.proxy.example.json config.proxy.json
+test -f config.proxy.json || cp config.json config.proxy.json
 test -f .env || cp .env.example .env
 chmod 600 .env
 ```
+
+编辑 `config.proxy.json` 的以下顶层字段，已有同名字段时替换原值，不能重复添加键。下面是字段片段，需按 JSON 逗号规则合入完整配置；`groups` 或旧 `domain` 等目标设置保持原值：
+
+```json
+"candidateSources": [
+  "https://raw.githubusercontent.com/LancelotRar/best-cf-ips/main/best-cf-ip-scanned-top100.txt",
+  "https://raw.githubusercontent.com/joname1/BestCFip/main/ipv4.txt"
+],
+"candidateCacheDir": "state/candidate-sources",
+"candidateSnapshotFile": "candidates/community-ipv4.txt"
+```
+
+这些路径适用于解压目录运行；JSON 位于 `/etc/adgh-cf/` 时，缓存应为 `/var/lib/adgh-cf/candidate-sources`，快照应为 `/opt/adgh-cf/candidates/community-ipv4.txt`。`config.proxy.example.json` 是格式 1 的旧 OpenBao 模板，只供旧单域名起步使用。正式 `run` 应继续使用 service 指定的配置，避免复制出的任务同时接管相同域名。
 
 编辑 `.env`：
 
@@ -188,12 +203,15 @@ CANDIDATE_PROXY_PASSWORD="your-password"
 
 刷新间隔默认 24 小时，在下次执行 `probe` 或 `run` 时检查；systemd 调度见 DEPLOY.md。
 
-### 从旧版本升级（离线方式仍可使用）
+### 离线候选与旧配置兼容
 
-已有 `config.json` 不会被程序修改。PT 主机无法访问 GitHub 时，使用随包提供的快照和 `config.pt.example.json`；来源数组为空，不会尝试下载 GitHub 列表。另存配置避免覆盖已有文件：
+已有配置不会被程序修改。新格式也可使用离线候选：保留原 `groups`、模式和路径，将顶层 `candidateSources` 设为 `[]`，需要社区快照时再填写 `candidateSnapshotFile`。无需替换为旧配置。
+
+`config.pt.example.json` 是格式 1 的旧 OpenBao 离线模板，来源数组为空，不下载 GitHub 列表。仅在需要旧单域名配置时另存并填写实际域名：
 
 ```sh
-cp config.pt.example.json config.pt.json
+test -f config.pt.json || cp config.pt.example.json config.pt.json
+# 编辑旧格式的 domain/healthPath；普通网站使用上方格式 2 配置
 ./adgh-cf probe --config config.pt.json --output reports/home-public.json
 ```
 
@@ -230,13 +248,13 @@ PT 下载尤其是上传占满出口时，会增加排队延迟和超时。先�
 4. 输出每个样本的 TCP 耗时、TLS 阶段耗时、从请求开始到响应首字节的等待时间、总耗时、HTTP 状态及健康分类。
 5. 按成功率门槛筛选，以延迟生成本轮建议地址。退出码：`0` 有合格地址；`2` 没有合格地址；`1` 配置、文件或执行错误。
 
-报告的 `suggestedIp` 只是本轮受测地址中表现最好的候选，不会触发任何写入。TCP 最快不保证 HTTPS 最好；本版本只验证有限入围样本，不声称找到了全网最优地址。
+以上是单目标 `probe` 测量步骤。格式 2 按组对主域名执行这些步骤，再对全部成员复验；其 `groups[].primarySuggestion` 为主域名第一名，`groups[].suggestedIp` 为全组复验通过的候选。`probe` 的建议不会触发写入，`run` 还需连续确认、冷却及写前检查。TCP 最快不保证 HTTPS 最好；本版本只验证有限入围样本，不声称找到了全网最优地址。格式 2 的 `probe`/`run` 无共享候选或预算耗尽退出 2；完整退出码见 [多域名指南](docs/DOMAIN-GROUPS.md#选择与预算)。
 
-`probe`、`run` 默认只记录候选源状态、测速汇总、DNS 对照错误及优化决定，不逐条打印样本。指定 `--output` 时完整 JSON 原子保存至文件：`probe` 在 stderr 提示报告位置，`run` 在 stdout 输出一行包含当前/建议/下一地址、确认次数、原因和实际动作的摘要；pending 恢复或 dry-run 阻止变更也会输出决定。未指定 `--output` 时 stdout 仍输出完整 JSON，便于管道处理。逐 IP 样本、健康分类和淘汰原因始终保留在完整报告；需要实时样本进度时，对 `probe` 或 `run` 添加 `--verbose`。`refresh`、`export` 的输出行为不变。
+`probe`、`run` 默认保留候选源状态和测速汇总，不逐条打印样本。指定 `--output` 时完整 JSON 原子保存至文件；格式 1 的 `probe` 在 stderr 提示报告位置，`run` 在 stdout 输出当前/建议/拟切换地址、确认次数、原因和动作。格式 2 的 `probe`/`run` 在 stdout 输出 `Groups …: status=… groups=…; report=…`，逐组原因和实际动作查看 JSON 的 `groups`；总体 `complete` 包括等待确认，不代表已经切换。未指定 `--output` 时 stdout 输出完整 JSON。需要实时样本进度时添加 `--verbose`；`refresh`、`export` 的输出行为不变。
 
 默认每个 IP 最多五次样本，只展示中位数；至少二十个成功样本才报告本轮 P95。成功率已不可能达标时提前淘汰；可用 `maxTtfbMs` 设置延迟淘汰门槛，0 表示禁用。报告 `eliminatedReason` 和实际样本数，被淘汰地址不参与排名。`run` 已提供连续确认、冷却及条件回滚，保留最近 48 轮摘要；跨轮聚合成功率、连接复用指标尚未实现。当前健康探测不能保证认证操作可用；HTTP/2 或 HTTP/3 客户端的性能可能不同。
 
-健康结果结合 JSON 判断：active 与 standby 可作为可达候选；sealed、未初始化、HTML 挑战页、边缘限流和网络故障分别报告。standby 的可达性不等于已经验证其转发能力。无可用地址时报告错误，不猜测 IP。
+OpenBao 模式结合健康 JSON 判断：active 与 standby 可作为可达候选；sealed、未初始化、无效响应和网络故障分别报告。standby 的可达性不等于已经验证其转发能力。新格式默认 `https` 只验证基本 HTTPS 响应，`http` 验证指定状态码和可选标记，两者不解析 OpenBao 健康 JSON。无可用地址时不猜测 IP。
 
 ### 旧单域名配置（格式版本 1）
 
